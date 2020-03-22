@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import javax.inject.Inject;
+
+import com.nilcaream.atto.Atto;
 import com.nilcaream.utilargs.UtilArgs;
 import com.nilcaream.utilargs.model.Option;
 
@@ -23,29 +26,41 @@ public class App {
     @Option(name = 'o')
     private String targetDirectory;
 
+    @Inject
+    private IoService ioService;
+
     private Logger logger = LoggerFactory.getLogger(getClass());
 
     public static void main(String[] args) {
-        App app = new App();
+        App app = Atto.builder().build().instance(App.class);
         new UtilArgs(args, app);
         app.go();
     }
 
-
-	private void go() {
-        Arrays.stream(sourceDirectories.split(",")).forEach(source -> scan(source,targetDirectory));
+    private void go() {
+        Arrays.stream(sourceDirectories.split(",")).forEach(source -> scan(source, targetDirectory));
     }
-    
-    private void scan(String source, String target) {
-        try (Stream<Path> walk = Files.walk(Paths.get(source))) {
-            walk.filter(Files::isRegularFile)
-            .forEach(f -> logger.info(f.toString()));
-                    //.map(x -> x.toString());
 
+    private void scan(String sourceRoot, String targetRoot) {
+        try (Stream<Path> walk = Files.walk(Paths.get(sourceRoot))) {
+            walk.filter(Files::isRegularFile).forEach(source -> {
+                try {
+                    Path target = ioService.buildTarget(source, targetRoot);
+                    if (target != null && !Files.isSameFile(source, target)) {
+                        target = ioService.checkDuplicate(source, target);
+                        if (target == null) {
+                            ioService.delete(source);
+                        } else {
+                            ioService.move(source, target);
+                        }
+                    }
+                } catch (IOException e) {
+                    logger.error("Fail", e);
+                }
+            });
         } catch (IOException e) {
             e.printStackTrace();
-        }        
+        }
     }
 
-    
 }
