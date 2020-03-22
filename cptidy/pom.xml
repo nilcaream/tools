@@ -17,6 +17,21 @@
 
   <dependencies>
     <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>1.2.3</version>
+    </dependency>
+    <dependency>
+      <groupId>com.nilcaream.utilargs</groupId>
+      <artifactId>util-args</artifactId>
+      <version>0.2</version>
+    </dependency>
+    <dependency>
+      <groupId>com.nilcaream.atto</groupId>
+      <artifactId>atto-core</artifactId>
+      <version>1.1</version>
+    </dependency>
+    <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <version>5.6.0</version>
