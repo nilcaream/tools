@@ -46,12 +46,14 @@ public class App {
             walk.filter(Files::isRegularFile).forEach(source -> {
                 try {
                     Path target = ioService.buildTarget(source, targetRoot);
-                    if (target != null && !Files.isSameFile(source, target)) {
-                        target = ioService.checkDuplicate(source, target);
-                        if (target == null) {
-                            ioService.delete(source);
-                        } else {
-                            ioService.move(source, target);
+                    if (target != null) {
+                        if (ioService.isNotSameFile(source, target)) {
+                            target = ioService.checkDuplicate(source, target);
+                            if (target == null) {
+                                ioService.delete(source);
+                            } else {
+                                ioService.move(source, target);
+                            }
                         }
                     }
                 } catch (IOException e) {

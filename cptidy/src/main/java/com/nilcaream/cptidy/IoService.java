@@ -97,4 +97,8 @@ public class IoService {
 	public void move(Path source, Path target) {
         log("move", source, target);
 	}
+
+	public boolean isNotSameFile(Path source, Path target) throws IOException {
+		return source.toFile().exists() && target.toFile().exists() && !java.nio.file.Files.isSameFile(source, target); 
+	}
 }
