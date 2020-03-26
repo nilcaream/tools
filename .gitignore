@@ -5,4 +5,5 @@
 
 *.jar
 *.log
+dependency-reduced-pom.xml
 target
