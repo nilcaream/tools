@@ -1,5 +1,6 @@
 package com.nilcaream.cptidy;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -19,12 +20,14 @@ import org.slf4j.LoggerFactory;
 public class IoService {
 
     private static final Pattern TARGET_FILE_NAME = Pattern
-            .compile("(20[0-9]{2})([01][0-9])([0-9]){2}([^0-9]).+\\.(.{3,4})");
+            .compile(".*(20[0-9]{2})([01][0-9])([0-9]){2}([^0-9]).+\\.(.{3,4})");
     private static final Set<String> EXTENSIONS = Set.of("jpg", "jpeg", "mp4", "mpeg");
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
-    public Path buildTarget(Path source, String targetRoot) {
+    private boolean dryRun = true;
+
+    public Path buildMatchingTarget(Path source, String targetRoot) {
         String sourceName = source.getFileName().toString();
         Matcher matcher = TARGET_FILE_NAME.matcher(sourceName.toLowerCase());
         Path result = null;
@@ -34,31 +37,23 @@ public class IoService {
             if (EXTENSIONS.contains(extension)) {
                 result = Paths.get(targetRoot, matcher.group(1) + "-" + matcher.group(2), sourceName);
             } else {
-                log("unsupported extension", source);
+                info("extension", source);
             }
         } else {
-            log("match not found", source);
+            debug("no match", source);
         }
 
         return result;
     }
 
-    public Path checkDuplicate(Path source, Path target) throws IOException {
-        Path result = null;
-        if (target.toFile().exists()) {
-            if (checkSum(source).equals(checkSum(target))) {
-                log("duplicate found", source, target);
-            } else {
-                result = uniqueName(target);
-                log("renamed", result);
-            }
-        } else {
-            result = target;
-        }
-        return result;
+    public boolean hasSameContent(Path source, Path target) throws IOException {
+        File sourceFile = source.toFile();
+        File targetFile = target.toFile();
+        return sourceFile.exists() && targetFile.exists() && sourceFile.length() == targetFile.length()
+                && checkSum(sourceFile).equals(checkSum(targetFile));
     }
 
-    private Path uniqueName(Path path) {
+    public Path buildUniquePath(Path path) {
         String fileName = path.getFileName().toString();
         String name = Files.getNameWithoutExtension(fileName);
         String extension = Files.getFileExtension(fileName);
@@ -73,32 +68,43 @@ public class IoService {
         return result;
     }
 
-    private String checkSum(Path path) throws IOException {
-        return Files.asByteSource(path.toFile()).hash(Hashing.goodFastHash(128)).toString();
+    private String checkSum(File source) throws IOException {
+        return Files.asByteSource(source).hash(Hashing.goodFastHash(128)).toString();
     }
 
-    private void log(String status, Path source) {
+    public void info(String status, Path source) {
         logger.info("{} {}", formatStatus(status), source.toString());
     }
 
-    private void log(String status, Path source, Path target) {
+    private void debug(String status, Path source) {
+        logger.debug("{} {}", formatStatus(status), source.toString());
+    }
+
+    public void info(String status, Path source, Path target) {
         logger.info("{} {} > {}", formatStatus(status), source.toString(), target.toString());
     }
 
     private String formatStatus(String status) {
         String upper = status.toUpperCase().replace(" ", "-").trim();
-        return (upper + "                                ").substring(0, 20);
+        return (upper + "                                ").substring(0, 10);
     }
 
-	public void delete(Path source) {
-        log("delete", source);
-	}
+    public void delete(Path source) {
+        info("delete", source);
+        if (!dryRun) {
+            source.toFile().delete();
+        }
+    }
 
-	public void move(Path source, Path target) {
-        log("move", source, target);
-	}
+    public void move(Path source, Path target) throws IOException {
+        info("move", source, target);
+        if (!dryRun) {
+            target.getParent().toFile().mkdirs();
+            Files.move(source.toFile(), target.toFile());
+        }
+    }
 
-	public boolean isNotSameFile(Path source, Path target) throws IOException {
-		return source.toFile().exists() && target.toFile().exists() && !java.nio.file.Files.isSameFile(source, target); 
-	}
+    public boolean isSameFile(Path source, Path target) throws IOException {
+        return source.toFile().exists() && target.toFile().exists() && java.nio.file.Files.isSameFile(source, target);
+    }
 }

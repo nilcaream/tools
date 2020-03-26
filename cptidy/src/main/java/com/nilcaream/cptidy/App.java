@@ -45,16 +45,22 @@ public class App {
         try (Stream<Path> walk = Files.walk(Paths.get(sourceRoot))) {
             walk.filter(Files::isRegularFile).forEach(source -> {
                 try {
-                    Path target = ioService.buildTarget(source, targetRoot);
-                    if (target != null) {
-                        if (ioService.isNotSameFile(source, target)) {
-                            target = ioService.checkDuplicate(source, target);
-                            if (target == null) {
-                                ioService.delete(source);
-                            } else {
-                                ioService.move(source, target);
-                            }
-                        }
+                    Path target = ioService.buildMatchingTarget(source, targetRoot);
+                    if (target == null) {
+                        // file is not matching target pattern
+                    } else if (ioService.isSameFile(source, target)) {
+                        // file is already in target location
+                    } else if (ioService.hasSameContent(source, target)) {
+                        // duplicate detected
+                        ioService.delete(source);
+                    } else if (target.toFile().exists()) {
+                        // target exists but is a different file
+                        target = ioService.buildUniquePath(target);
+                        ioService.info("new name", source, target);
+                        ioService.move(source, target);
+                    } else {
+                        // just move to target
+                        ioService.move(source, target);
                     }
                 } catch (IOException e) {
                     logger.error("Fail", e);
@@ -64,5 +70,4 @@ public class App {
             e.printStackTrace();
         }
     }
-
 }
