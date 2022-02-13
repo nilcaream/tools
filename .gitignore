@@ -2,8 +2,10 @@
 .settings
 .classpath
 .project
+.idea
 
 *.jar
 *.log
 dependency-reduced-pom.xml
 target
+cptidy-*.txt

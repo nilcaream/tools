@@ -1,22 +1,21 @@
 <configuration>
-
-    <timestamp key="timestamp" datePattern="yyyyMMdd-HHmmss" />
+    <timestamp key="timestamp" datePattern="yyyyMMdd-HHmmss"/>
 
     <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} %msg%n</pattern>
+            <pattern>%d{HH:mm:ss.SSS} %.-3level %msg%n</pattern>
         </encoder>
     </appender>
 
     <appender name="file" class="ch.qos.logback.core.FileAppender">
-        <file>cptidy-${timestamp}.log</file>
+        <file>cptidy-${timestamp}.txt</file>
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} %msg%n</pattern>
+            <pattern>%d{HH:mm:ss.SSS} %.-3level %msg%n</pattern>
         </encoder>
     </appender>
 
     <root level="info">
-        <appender-ref ref="console" />
-        <appender-ref ref="file" />
+        <appender-ref ref="console"/>
+        <appender-ref ref="file"/>
     </root>
 </configuration>
