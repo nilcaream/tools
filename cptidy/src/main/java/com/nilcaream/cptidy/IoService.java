@@ -32,7 +32,10 @@ public class IoService {
     @Option(value = "m", alternative = "move")
     private boolean move = false;
 
-    private Statistics statistics = new Statistics();
+    @Option(value = "c", alternative = "copy")
+    private boolean copy = false;
+
+    private Statistics statistics = new Statistics("statistics");
 
     public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
         String sourceName = source.getFileName().toString().toLowerCase().replaceAll("[^.a-z0-9_-]+", "-");
@@ -124,9 +127,55 @@ public class IoService {
         return target;
     }
 
+    public Path copyAsNew(Path source, Path orgTarget) throws IOException {
+        Path target = buildUniquePath(orgTarget);
+        logger.info("copy new", source, ">", target);
+        statistics.add("copy new", io.size(source));
+
+        if (copy) {
+            io.copy(source, target);
+        }
+        return target;
+    }
+
+    public void copy(Path source, Path target) throws IOException {
+        logger.info("copy", source, ">", target);
+        statistics.add("copy", io.size(source));
+
+        if (copy) {
+            io.copy(source, target);
+        }
+    }
+
     public boolean isSameFile(Path source, Path target) throws IOException {
         return io.isSameFile(source, target);
     }
+
+    public Statistics getStatistics() {
+        return statistics;
+    }
+
+    public Statistics resetStatistics(String id) {
+        Statistics previous = statistics;
+        statistics = new Statistics(id);
+        return previous;
+    }
+
+    public void reportNoMatch(Path path) throws IOException {
+        logger.debug("no match", path);
+        statistics.add("no match", io.size(path));
+    }
+
+    public void reportOkLocation(Path path) throws IOException {
+        logger.debug("ok location", path);
+        statistics.add("ok location", io.size(path));
+    }
+
+    public Path buildCopyTarget(Path source, Path sourceRoot, Path targetRoot) {
+        return targetRoot.resolve(sourceRoot.relativize(source));
+    }
+
+    // --------------------------------
 
     public boolean isDelete() {
         return delete;
@@ -144,23 +193,11 @@ public class IoService {
         this.move = move;
     }
 
-    public Statistics getStatistics() {
-        return statistics;
+    public boolean isCopy() {
+        return copy;
     }
 
-    public Statistics resetStatistics() {
-        Statistics previous = statistics;
-        statistics = new Statistics();
-        return previous;
-    }
-
-    public void reportNoMatch(Path path) throws IOException {
-        logger.debug("no match", path);
-        statistics.add("no match", io.size(path));
-    }
-
-    public void reportOkLocation(Path path) throws IOException {
-        logger.debug("ok location", path);
-        statistics.add("ok location", io.size(path));
+    public void setCopy(boolean copy) {
+        this.copy = copy;
     }
 }

@@ -179,6 +179,21 @@ class IoServiceTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("provideFileSystem")
+    void shouldCopy(String fsType, Path input, Path output) throws IOException {
+        // given
+        Path file = io.write(input.resolve("test-file.jpg"), "test");
+
+        // when
+        underTest.setCopy(true);
+        underTest.copy(file, input.resolve("new-file"));
+
+        // then
+        assertThat(input.resolve("test-file.jpg")).hasContent("test");
+        assertThat(input.resolve("new-file")).hasContent("test");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
     void shouldMove(String fsType, Path input, Path output) throws IOException {
         // given
         Path file = io.write(input.resolve("test-file.jpg"), "test");
@@ -229,6 +244,27 @@ class IoServiceTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("provideFileSystem")
+    void shouldCopyAsNew(String fsType, Path input, Path output) throws IOException {
+        // given
+        Path file = io.write(input.resolve("test-file.jpg"), "test");
+
+        // when
+        underTest.setCopy(true);
+
+        // then
+        assertThat(underTest.copyAsNew(file, input.resolve("test.txt"))).isEqualTo(input.resolve("test.txt"));
+        io.write(input.resolve("test-file.jpg"), "test");
+        assertThat(underTest.copyAsNew(file, file)).isEqualTo(input.resolve("test-file-0.jpg"));
+        io.write(input.resolve("test-file.jpg"), "test");
+        assertThat(underTest.copyAsNew(file, file)).isEqualTo(input.resolve("test-file-1.jpg"));
+
+        assertThat(input.resolve("test-file.jpg")).hasContent("test");
+        assertThat(input.resolve("test-file-0.jpg")).hasContent("test");
+        assertThat(input.resolve("test-file-1.jpg")).hasContent("test");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
     void shouldDetectSameFile(String fsType, Path input, Path output) throws IOException {
         // given
         Path file1 = io.write(input.resolve("file1"), "test");
@@ -251,15 +287,96 @@ class IoServiceTest {
         // given
         Path source = io.write(input.resolve("file1"), "test");
         Path target = input.resolve("file2");
+        Path newPath = null;
+
+        // when
+        underTest.move(source, target);
+        // then
+        assertThat(Files.exists(source)).isTrue();
+        assertThat(Files.exists(target)).isFalse();
+
+        // when
+        newPath = underTest.moveAsNew(source, target);
+        // then
+        assertThat(Files.exists(source)).isTrue();
+        assertThat(Files.exists(target)).isFalse();
+        assertThat(Files.exists(newPath)).isFalse();
+
+        // when
+        underTest.delete(source);
+        // then
+        assertThat(Files.exists(source)).isTrue();
+
+        // when
+        underTest.copy(source, target);
+        // then
+        assertThat(Files.exists(source)).isTrue();
+        assertThat(Files.exists(target)).isFalse();
+
+        // when
+        newPath = underTest.copyAsNew(source, target);
+        // then
+        assertThat(Files.exists(source)).isTrue();
+        assertThat(Files.exists(target)).isFalse();
+        assertThat(Files.exists(newPath)).isFalse();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldBuildCopyTarget(String fsType, Path input, Path output) throws IOException {
+        // given
+        Path file = io.write(input.resolve("parent").resolve("test-file.jpg"), "test");
+
+        // when
+        Path actual = underTest.buildCopyTarget(file, input, output);
 
         // then
-        underTest.move(source, target);
-        assertThat(Files.exists(source)).isTrue();
-        assertThat(Files.exists(target)).isFalse();
-        underTest.moveAsNew(source, target);
-        assertThat(Files.exists(source)).isTrue();
-        assertThat(Files.exists(target)).isFalse();
-        underTest.delete(source);
-        assertThat(Files.exists(source)).isTrue();
+        assertThat(actual).doesNotExist();
+        assertThat(actual).isEqualTo(output.resolve("parent").resolve("test-file.jpg"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldHaveStatistics(String fsType, Path input, Path output) throws IOException {
+        // given
+        Path file = io.write(input.resolve("parent").resolve("test-file.jpg"), "testX");
+
+        // when
+        Statistics base0 = underTest.getStatistics();
+        Statistics base1 = underTest.resetStatistics("0");
+        Statistics base2 = underTest.getStatistics();
+        assertThat(base2.hasData()).isFalse();
+        underTest.reportOkLocation(file);
+        underTest.reportOkLocation(file);
+        underTest.reportNoMatch(file);
+        Statistics first1 = underTest.getStatistics();
+        Statistics first2 = underTest.resetStatistics("1");
+        underTest.reportOkLocation(file);
+        Statistics second1 = underTest.getStatistics();
+        Statistics second2 = underTest.resetStatistics("2");
+
+        // then
+        assertThat(base0.hasData()).isFalse();
+        assertThat(base0.getId()).isEqualTo("statistics");
+        assertThat(base1).isSameAs(base0);
+        assertThat(base2.hasData()).isTrue();
+        assertThat(base2.getId()).isEqualTo("0");
+        assertThat(base2).isSameAs(first1);
+
+        assertThat(first1.hasData()).isTrue();
+        assertThat(first1.getId()).isEqualTo("0");
+        assertThat(first1.getData()).hasSize(2);
+        assertThat(first1.getData().get("ok location").getCount()).isEqualTo(2);
+        assertThat(first1.getData().get("ok location").getBytes()).isEqualTo(10);
+        assertThat(first1.getData().get("no match").getCount()).isEqualTo(1);
+        assertThat(first1.getData().get("no match").getBytes()).isEqualTo(5);
+        assertThat(first2).isSameAs(first1);
+
+        assertThat(second1.hasData()).isTrue();
+        assertThat(second1.getId()).isEqualTo("1");
+        assertThat(second1.getData()).hasSize(1);
+        assertThat(second1.getData().get("ok location").getCount()).isEqualTo(1);
+        assertThat(second1.getData().get("ok location").getBytes()).isEqualTo(5);
+        assertThat(second2).isSameAs(second1);
     }
 }

@@ -5,7 +5,12 @@ import java.util.TreeMap;
 
 public class Statistics {
 
+    private final String id;
     private Map<String, Record> data = new TreeMap<>();
+
+    public Statistics(String id) {
+        this.id = id;
+    }
 
     public void add(String key, long bytes) {
         Record record = data.get(key);
@@ -23,6 +28,10 @@ public class Statistics {
 
     public boolean hasData() {
         return data.size() > 0;
+    }
+
+    public String getId() {
+        return id;
     }
 
     public static final class Record {

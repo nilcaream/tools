@@ -39,7 +39,7 @@ public class ExifService {
             Metadata metadata = ImageMetadataReader.readMetadata(java.nio.file.Files.newInputStream(source));
             return getDate(source, metadata);
         } catch (ImageProcessingException | IOException e) {
-            logger.error("exif-error", source);
+            logger.warn("exif-error", source);
         }
         return null;
     }
@@ -55,7 +55,7 @@ public class ExifService {
             String date = tags.stream()
                     .map(datePattern::matcher)
                     .filter(Matcher::matches)
-                    .peek(m -> logger.debug("exif-str", source, ":", m.group()))
+                    .peek(m -> logger.debug("exif-string", source, ":", m.group()))
                     .map(m -> m.group(1) + "-" + m.group(2))
                     .findFirst()
                     .orElse(null);
@@ -69,7 +69,7 @@ public class ExifService {
             String date = directory.getTags().stream()
                     .filter(t -> directory.getObject(t.getTagType()).getClass() == Date.class)
                     .filter(t -> t.getTagName().toLowerCase().contains("creation"))
-                    .peek(t -> logger.debug("exif-cls", source, ":", t))
+                    .peek(t -> logger.debug("exif-date", source, ":", t))
                     .map(t -> directory.getDate(t.getTagType()))
                     .map(DATE_FORMAT::format)
                     .findFirst()
