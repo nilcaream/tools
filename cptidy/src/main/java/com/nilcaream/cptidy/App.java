@@ -1,21 +1,20 @@
 package com.nilcaream.cptidy;
 
-import ch.qos.logback.classic.Level;
 import com.nilcaream.atto.Atto;
 import com.nilcaream.utilargs.Option;
 import com.nilcaream.utilargs.UtilArgs;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
-
-import static java.lang.String.format;
 
 public class App {
 
@@ -25,63 +24,86 @@ public class App {
     @Option(value = "o", alternative = "output")
     private String targetDirectory;
 
-    @Option(value = "d", alternative = "dryRun")
-    private boolean dryRun;
-
     @Option(value = "v", alternative = "verbose")
     private boolean verbose;
 
     @Inject
     private IoService ioService;
 
-    private Logger logger = LoggerFactory.getLogger(getClass());
+    @Inject
+    private Logger logger;
 
     public static void main(String[] args) {
         App app = Atto.builder().build().instance(App.class);
         UtilArgs.bind(args, app);
+        UtilArgs.bind(args, app.ioService);
         app.go();
     }
 
     private void go() {
         if (verbose) {
-            ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).setLevel(Level.DEBUG);
+            logger.setDebug();
         }
 
-        ioService.info("Source", sourceDirectories);
-        ioService.info("Target", targetDirectory);
-        ioService.info("Dry run", dryRun);
-        ioService.debug("Verbose", verbose);
-        ioService.info("", "----------------------------------------------------------------");
+        logger.info("Source", sourceDirectories);
+        logger.info("Target", targetDirectory);
+        logger.info("Options", "move=" + ioService.isMove(), "delete=" + ioService.isDelete());
+        logger.debug("Verbose", verbose);
+        logger.info("", "----------------------------------------------------------------");
 
-        if (sourceDirectories == null || sourceDirectories.isEmpty() || targetDirectory == null) {
-            ioService.error("no input", "Provide input arguments: -i sourceDirectory -o targetDirectory");
+        Statistics scanStatistics = new Statistics();
+        Statistics lowerCaseStatistics = new Statistics();
+        Statistics duplicatesStatistics = new Statistics();
+
+        if (targetDirectory == null) {
+            logger.error("no input", "Provide input arguments: -i sourceDirectory -o targetDirectory");
         } else {
-            ioService.setDryRun(dryRun);
-            sourceDirectories.forEach(source -> {
-                ioService.info("scan", source + " > " + targetDirectory);
-                scan(source, targetDirectory);
-            });
-            if (!dryRun) {
-                ioService.info("lowercase", targetDirectory);
-                scan(targetDirectory, targetDirectory);
+            if (sourceDirectories != null) {
+                ioService.resetStatistics();
+                sourceDirectories.forEach(source -> {
+                    logger.info("scan-main", source + " > " + targetDirectory);
+                    scan(source, targetDirectory);
+                });
+                scanStatistics = ioService.getStatistics();
             }
+
+            ioService.resetStatistics();
+            logger.info("scan-case", targetDirectory);
+            scan(targetDirectory, targetDirectory);
+            lowerCaseStatistics = ioService.getStatistics();
+
+            ioService.resetStatistics();
+            logger.info("scan-copy", targetDirectory);
+            removeDuplicates(targetDirectory);
+            duplicatesStatistics = ioService.getStatistics();
         }
 
-        ioService.info("", "----------------------------------------------------------------");
-        ioService.getStatistics().getData().forEach((k, v) -> ioService.info(k, format("%d files, %d MB", v.getCount(), v.getBytes() / (1024 * 1024))));
+        if (scanStatistics.hasData()) {
+            logger.info("scan-main", "----------------------------------------------------------------");
+            scanStatistics.getData().forEach((k, v) -> logger.info(k, v.toString()));
+        }
+        if (lowerCaseStatistics.hasData()) {
+            logger.info("scan-case", "----------------------------------------------------------------");
+            lowerCaseStatistics.getData().forEach((k, v) -> logger.info(k, v.toString()));
+        }
+        if (duplicatesStatistics.hasData()) {
+            logger.info("scan-copy", "----------------------------------------------------------------");
+            duplicatesStatistics.getData().forEach((k, v) -> logger.info(k, v.toString()));
+        }
     }
 
     private void scan(String sourceRoot, String targetRoot) {
+        Path targetRootPath = Paths.get(targetRoot);
         try (Stream<Path> walk = Files.walk(Paths.get(sourceRoot))) {
             walk.filter(Files::isRegularFile).forEach(source -> {
                 try {
-                    Path target = ioService.buildMatchingTarget(source, targetRoot);
+                    Path target = ioService.buildMatchingTarget(source, targetRootPath);
                     if (target == null) {
                         // file is not matching target pattern
-                        ioService.debug("no match", source);
+                        ioService.reportNoMatch(source);
                     } else if (ioService.isSameFile(source, target)) {
                         // file is already in target location
-                        ioService.debug("ok location", source);
+                        ioService.reportOkLocation(source);
                     } else if (ioService.hasSameContent(source, target)) {
                         // duplicate detected
                         ioService.delete(source);
@@ -93,11 +115,62 @@ public class App {
                         ioService.move(source, target);
                     }
                 } catch (IOException e) {
-                    logger.error("File processing error", e);
+                    logger.error("error", e, "File processing error");
                 }
             });
         } catch (IOException e) {
-            logger.error("Directory processing error", e);
+            logger.error("error", e, "Directory processing error");
+        }
+    }
+
+    private void removeDuplicates(String targetRoot) {
+        try (Stream<Path> walk = Files.walk(Paths.get(targetRoot))) {
+            walk.filter(Files::isDirectory).forEach(directory -> {
+                try {
+                    int[] count = new int[]{0};
+                    Map<Long, List<Path>> sizeToPaths = new HashMap<>();
+                    Files.list(directory)
+                            .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
+                            .forEach(path -> {
+                                count[0]++;
+                                long size = size(path);
+                                List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
+                                paths.add(path);
+                            });
+                    logger.info("directory", directory, ":", count[0], "files");
+
+                    sizeToPaths.entrySet().stream()
+                            .filter(e -> e.getKey() > 1024)
+                            .filter(e -> e.getValue().size() > 1)
+                            .map(Map.Entry::getValue)
+                            .forEach(paths -> {
+                                for (Path file : paths) {
+                                    for (Path copy : paths) {
+                                        try {
+                                            if (!ioService.isSameFile(file, copy) && ioService.hasSameContent(file, copy)) {
+                                                ioService.delete(copy);
+                                            }
+                                        } catch (IOException e) {
+                                            logger.error("error", file, ":", copy);
+                                        }
+                                    }
+                                }
+                            });
+                } catch (IOException e) {
+                    logger.error("error", e, "File processing error");
+                }
+            });
+        } catch (IOException e) {
+            logger.error("error", e, "Directory processing error");
+        }
+    }
+
+    private long size(Path path) {
+        try {
+            return Files.size(path);
+        } catch (IOException e) {
+            logger.error("size-error", path);
+            return -1;
         }
     }
 }

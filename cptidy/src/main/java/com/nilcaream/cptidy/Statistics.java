@@ -21,6 +21,10 @@ public class Statistics {
         return data;
     }
 
+    public boolean hasData() {
+        return data.size() > 0;
+    }
+
     public static final class Record {
         private int count;
         private long bytes;
@@ -31,6 +35,11 @@ public class Statistics {
 
         public long getBytes() {
             return bytes;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%d files, %.3f MB", count, bytes / (1024.0 * 1024.0));
         }
     }
 }

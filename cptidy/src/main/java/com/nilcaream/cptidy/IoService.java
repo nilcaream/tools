@@ -1,21 +1,12 @@
 package com.nilcaream.cptidy;
 
-import com.drew.imaging.ImageMetadataReader;
-import com.drew.imaging.ImageProcessingException;
-import com.drew.metadata.Directory;
-import com.drew.metadata.Metadata;
-import com.google.common.hash.Hashing;
-import com.google.common.io.Files;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.nilcaream.utilargs.Option;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,182 +15,152 @@ import java.util.regex.Pattern;
 public class IoService {
 
     private static final Pattern SOURCE_FILE_NAME_PATTERN = Pattern.compile(".*(20[0-9]{2})([01][0-9])([0-9]{2})([^0-9]).+\\.(.{3,4})");
-    private static final Pattern EXIF_DATE_PATTERN = Pattern.compile(".*exif.*date.*(20[012][0-9]).([01][0-9]).([0123][0-9]).*", Pattern.CASE_INSENSITIVE);
     private static final Set<String> EXTENSIONS = Set.of("jpg", "jpeg", "mp4", "mpeg", "avi", "mov");
 
-    private Logger logger = LoggerFactory.getLogger(getClass());
-    private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM");
+    @Inject
+    private Logger logger;
 
-    private boolean dryRun;
+    @Inject
+    private ExifService exifService;
+
+    @Inject
+    private Io io;
+
+    @Option(value = "d", alternative = "delete")
+    private boolean delete = false;
+
+    @Option(value = "m", alternative = "move")
+    private boolean move = false;
+
     private Statistics statistics = new Statistics();
 
-    public String dateFromExif(Path source) {
-        try {
-            Metadata metadata = ImageMetadataReader.readMetadata(source.toFile());
-            Iterable<Directory> directories = metadata.getDirectories();
-            for (Directory directory : directories) {
-                String date = dateFromExif1(source, directory);
-                if (date == null) {
-                    date = dateFromExif2(source, directory);
-                }
-                if (date != null) {
-                    return date;
-                }
-            }
-        } catch (ImageProcessingException | IOException e) {
-            error("exif-error", source);
-        }
-        return null;
-    }
-
-    private String dateFromExif1(Path source, Directory directory) {
-        return directory.getTags().stream()
-                .map(Object::toString)
-                .map(EXIF_DATE_PATTERN::matcher)
-                .filter(Matcher::matches)
-                .peek(m -> info("exif 1", source, m.group()))
-                .map(m -> m.group(1) + "-" + m.group(2))
-                .findFirst()
-                .orElse(null);
-    }
-
-    private String dateFromExif2(Path source, Directory directory) {
-        return directory.getTags().stream()
-                .filter(t -> directory.getObject(t.getTagType()).getClass() == Date.class)
-                .filter(t -> t.getTagName().toLowerCase().contains("creation"))
-                .peek(t -> info("exif 2", source, t))
-                .map(t -> directory.getDate(t.getTagType()))
-                .map(d -> dateFormat.format(d))
-                .findFirst()
-                .orElse(null);
-    }
-
-    public Path buildMatchingTarget(Path source, String targetRoot) {
-        String sourceName = source.getFileName().toString().toLowerCase();
+    public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
+        String sourceName = source.getFileName().toString().toLowerCase().replaceAll("[^.a-z0-9_-]+", "-");
         Matcher matcher = SOURCE_FILE_NAME_PATTERN.matcher(sourceName);
         Path result = null;
 
-        String extension = Files.getFileExtension(sourceName);
+        String extension = io.getFileExtension(sourceName);
 
         if (matcher.matches()) {
             if (EXTENSIONS.contains(extension)) {
-                result = Paths.get(targetRoot, matcher.group(1) + "-" + matcher.group(2), sourceName);
+                result = targetRoot.resolve(matcher.group(1) + "-" + matcher.group(2)).resolve(sourceName);
             } else {
-                warning("extension", source);
+                logger.warn("extension", source);
             }
         } else if (EXTENSIONS.contains(extension)) {
-            String date = dateFromExif(source);
+            String date = exifService.getDate(source);
             if (date != null) {
-                result = Paths.get(targetRoot, date, sourceName);
+                result = targetRoot.resolve(date).resolve(sourceName);
             }
-        } else {
-            debug("no match", source);
         }
 
+        if (EXTENSIONS.contains(extension)) {
+            statistics.add("ok-extension", io.size(source));
+        }
+        if (result != null) {
+            statistics.add("has-date", io.size(source));
+        }
+
+        statistics.add("total", io.size(source));
         return result;
     }
 
     public boolean hasSameContent(Path source, Path target) throws IOException {
-        File sourceFile = source.toFile();
-        File targetFile = target.toFile();
-        if (sourceFile.exists() && targetFile.exists() && sourceFile.length() == targetFile.length()) {
-            String sumSource = checkSum(sourceFile);
-            String sumTarget = checkSum(targetFile);
-            if (sumSource.equals(sumTarget)) {
-                info("duplicate", source,target);
+        if (Files.exists(source) && Files.exists(target) && io.size(source) == io.size(target)) {
+            String sourceHash = io.hash(source);
+            String targetHash = io.hash(target);
+            if (sourceHash.equals(targetHash)) {
+                logger.info("duplicate", source, "=", target);
                 return true;
+            } else {
+                return false;
             }
+        } else {
+            return false;
         }
-        return false;
     }
 
-    public Path buildUniquePath(Path path) {
+    private Path buildUniquePath(Path path) {
         String fileName = path.getFileName().toString();
-        String name = Files.getNameWithoutExtension(fileName);
-        String extension = Files.getFileExtension(fileName);
+        String name = io.getFileName(fileName);
+        String extension = io.getFileExtension(fileName);
         Path root = path.getParent();
 
         int index = 0;
         Path result = path;
-        while (result.toFile().exists()) {
+        while (Files.exists(result)) {
             result = root.resolve(name + "-" + index + "." + extension);
             index++;
         }
         return result;
     }
 
-    private String checkSum(File source) throws IOException {
-        return Files.asByteSource(source).hash(Hashing.goodFastHash(128)).toString();
-    }
+    public void delete(Path path) throws IOException {
+        logger.info("delete", path);
+        statistics.add("delete", io.size(path));
 
-    public void info(String status, Object message) {
-        logger.info("{} {}", formatStatus(status), message);
-    }
-
-    private void info(String status, Object messageA, Object messageB) {
-        logger.info("{} {} > {}", formatStatus(status), messageA, messageB);
-    }
-
-    public void debug(String status, Object message) {
-        logger.debug("{} {}", formatStatus(status), message);
-    }
-
-    private void debug(String status, Object messageA, Object messageB) {
-        logger.debug("{} {} : {}", formatStatus(status), messageA, messageB);
-    }
-
-    private void warning(String status, Object message) {
-        logger.warn("{} {}", formatStatus(status), message);
-    }
-
-    public void error(String status, Object message) {
-        logger.error("{} {}", formatStatus(status), message);
-    }
-
-    private String formatStatus(String status) {
-        String upper = status.toUpperCase().replace(" ", "-").trim();
-        return (upper + "                                ").substring(0, 10);
-    }
-
-    public void delete(Path source) {
-        info("delete", source);
-        statistics.add("delete", source.toFile().length());
-
-        if (!dryRun) {
-           // source.toFile().delete();
+        if (delete) {
+            io.delete(path);
         }
     }
 
     public void move(Path source, Path target) throws IOException {
-        info("move", source, target);
-        statistics.add("move", source.toFile().length());
+        logger.info("move", source, ">", target);
+        statistics.add("move", io.size(source));
 
-        if (!dryRun) {
-            target.getParent().toFile().mkdirs();
-            Files.move(source.toFile(), target.toFile());
+        if (move) {
+            io.move(source, target);
         }
     }
 
-    public void moveAsNew(Path source, Path orgTarget) throws IOException {
+    public Path moveAsNew(Path source, Path orgTarget) throws IOException {
         Path target = buildUniquePath(orgTarget);
-        info("move new", source, target);
-        statistics.add("move new", source.toFile().length());
+        logger.info("move new", source, ">", target);
+        statistics.add("move new", io.size(source));
 
-        if (!dryRun) {
-            target.getParent().toFile().mkdirs();
-            Files.move(source.toFile(), target.toFile());
+        if (move) {
+            io.move(source, target);
         }
+        return target;
     }
 
     public boolean isSameFile(Path source, Path target) throws IOException {
-        return source.toFile().exists() && target.toFile().exists() && java.nio.file.Files.isSameFile(source, target);
+        return io.isSameFile(source, target);
     }
 
-    public void setDryRun(boolean dryRun) {
-        this.dryRun = dryRun;
+    public boolean isDelete() {
+        return delete;
+    }
+
+    public void setDelete(boolean delete) {
+        this.delete = delete;
+    }
+
+    public boolean isMove() {
+        return move;
+    }
+
+    public void setMove(boolean move) {
+        this.move = move;
     }
 
     public Statistics getStatistics() {
         return statistics;
+    }
+
+    public Statistics resetStatistics() {
+        Statistics previous = statistics;
+        statistics = new Statistics();
+        return previous;
+    }
+
+    public void reportNoMatch(Path path) throws IOException {
+        logger.debug("no match", path);
+        statistics.add("no match", io.size(path));
+    }
+
+    public void reportOkLocation(Path path) throws IOException {
+        logger.debug("ok location", path);
+        statistics.add("ok location", io.size(path));
     }
 }
