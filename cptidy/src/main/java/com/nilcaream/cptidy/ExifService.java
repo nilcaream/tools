@@ -9,6 +9,8 @@ import com.drew.metadata.Tag;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.Collection;
@@ -35,9 +37,8 @@ public class ExifService {
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM");
 
     public String getDate(Path source) {
-        try {
-            Metadata metadata = ImageMetadataReader.readMetadata(java.nio.file.Files.newInputStream(source));
-            return getDate(source, metadata);
+        try (InputStream inputStream = Files.newInputStream(source)) {
+            return getDate(source, ImageMetadataReader.readMetadata(inputStream));
         } catch (ImageProcessingException | IOException e) {
             logger.warn("exif-error", source);
         }
@@ -60,7 +61,7 @@ public class ExifService {
                     .findFirst()
                     .orElse(null);
             if (date != null) {
-                logger.info("exif", source, ":", date);
+                logger.debug("exif", source, ":", date);
                 return date;
             }
         }
@@ -75,12 +76,12 @@ public class ExifService {
                     .findFirst()
                     .orElse(null);
             if (date != null) {
-                logger.info("exif", source, ":", date);
+                logger.debug("exif", source, ":", date);
                 return date;
             }
         }
 
-        logger.warn("exif-none", source);
+        logger.debug("exif-none", source);
         return null;
     }
 }

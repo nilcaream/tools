@@ -65,12 +65,12 @@ public class Logger {
         if (messages == null || messages.length == 0) {
             return "";
         } else {
-            return Arrays.stream(messages).map(String::valueOf).map(String::trim).collect(Collectors.joining(" "));
+            return Arrays.stream(messages).map(String::valueOf).map(String::trim).filter(e -> !e.isEmpty()).collect(Collectors.joining(" "));
         }
     }
 
     private String formatStatus(String status) {
         String upper = status.toUpperCase().replace(" ", "-").trim();
-        return (upper + "                                ").substring(0, 14);
+        return (upper + "                                ").substring(0, 16);
     }
 }

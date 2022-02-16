@@ -9,10 +9,8 @@ import com.drew.metadata.Tag;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
@@ -20,8 +18,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
-import static java.nio.file.StandardOpenOption.CREATE;
-import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
+import static java.nio.file.StandardOpenOption.*;
 
 @Singleton
 public class Io {
@@ -40,7 +37,7 @@ public class Io {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
 
-            try (InputStream inputStream = Files.newInputStream(path, StandardOpenOption.READ)) {
+            try (InputStream inputStream = Files.newInputStream(path, READ)) {
                 int bytesRead;
                 byte[] buffer = new byte[1024];
 
@@ -57,6 +54,33 @@ public class Io {
         } catch (NoSuchAlgorithmException e) {
             throw new IOException(e);
         }
+    }
+
+    public boolean haveSameContent(Path pathA, Path pathB) throws IOException {
+        byte[] bufferA = new byte[16 * 1024];
+        byte[] bufferB = new byte[16 * 1024];
+
+        int i;
+        int bytesReadA = 0;
+        int bytesReadB;
+
+        try (InputStream inputStreamA = Files.newInputStream(pathA, READ); InputStream inputStreamB = Files.newInputStream(pathB, READ)) {
+            while (bytesReadA != -1) {
+                bytesReadA = inputStreamA.read(bufferA);
+                bytesReadB = inputStreamB.read(bufferB);
+                if (bytesReadA != bytesReadB) {
+                    return false;
+                } else {
+                    for (i = 0; i < bytesReadA; i++) {
+                        if (bufferA[i] != bufferB[i]) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     public void copy(Path source, Path target) throws IOException {

@@ -2,6 +2,7 @@ package com.nilcaream.cptidy;
 
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -98,8 +99,8 @@ class IoServiceTest {
         Path file2 = input.resolve("other-file.jpg");
 
         // then
-        assertThat(underTest.hasSameContent(file1, file2)).isFalse();
-        assertThat(underTest.hasSameContent(file2, file1)).isFalse();
+        assertThat(underTest.haveSameContent(file1, file2)).isFalse();
+        assertThat(underTest.haveSameContent(file2, file1)).isFalse();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -110,8 +111,8 @@ class IoServiceTest {
         Path file2 = io.write(input.resolve("2nd").resolve("test-file.jpg"), "test");
 
         // then
-        assertThat(underTest.hasSameContent(file1, file2)).isTrue();
-        assertThat(underTest.hasSameContent(file2, file1)).isTrue();
+        assertThat(underTest.haveSameContent(file1, file2)).isTrue();
+        assertThat(underTest.haveSameContent(file2, file1)).isTrue();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -122,8 +123,8 @@ class IoServiceTest {
         Path file2 = io.write(input.resolve("2nd").resolve("test-file.jpg"), "test ");
 
         // then
-        assertThat(underTest.hasSameContent(file1, file2)).isFalse();
-        assertThat(underTest.hasSameContent(file2, file1)).isFalse();
+        assertThat(underTest.haveSameContent(file1, file2)).isFalse();
+        assertThat(underTest.haveSameContent(file2, file1)).isFalse();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -134,8 +135,8 @@ class IoServiceTest {
         Path file2 = io.write(input.resolve("2nd").resolve("test-file.jpg"), "test2");
 
         // then
-        assertThat(underTest.hasSameContent(file1, file2)).isFalse();
-        assertThat(underTest.hasSameContent(file2, file1)).isFalse();
+        assertThat(underTest.haveSameContent(file1, file2)).isFalse();
+        assertThat(underTest.haveSameContent(file2, file1)).isFalse();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -146,8 +147,8 @@ class IoServiceTest {
         Path file2 = io.write(input.resolve("2nd").resolve("test-file.jpg"), "tset");
 
         // then
-        assertThat(underTest.hasSameContent(file1, file2)).isFalse();
-        assertThat(underTest.hasSameContent(file2, file1)).isFalse();
+        assertThat(underTest.haveSameContent(file1, file2)).isFalse();
+        assertThat(underTest.haveSameContent(file2, file1)).isFalse();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -160,8 +161,8 @@ class IoServiceTest {
         io.copy(Paths.get("pom.xml"), file2);
 
         // then
-        assertThat(underTest.hasSameContent(file1, file2)).isTrue();
-        assertThat(underTest.hasSameContent(file2, file1)).isTrue();
+        assertThat(underTest.haveSameContent(file1, file2)).isTrue();
+        assertThat(underTest.haveSameContent(file2, file1)).isTrue();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -173,8 +174,34 @@ class IoServiceTest {
         Path file2 = io.write(input.resolve("2nd").resolve("test-file.jpg"), content + "10");
 
         // then
-        assertThat(underTest.hasSameContent(file1, file2)).isFalse();
-        assertThat(underTest.hasSameContent(file2, file1)).isFalse();
+        assertThat(underTest.haveSameContent(file1, file2)).isFalse();
+        assertThat(underTest.haveSameContent(file2, file1)).isFalse();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldHaveDifferentContentLargerFiles(String fsType, Path input, Path output) throws IOException {
+        // given
+        String content = Files.readString(Paths.get("pom.xml"));
+        Path file1 = io.write(input.resolve("test-file.jpg"), "01" + content + content + content);
+        Path file2 = io.write(input.resolve("2nd").resolve("test-file.jpg"), "10" + content + content + content);
+
+        // then
+        assertThat(underTest.haveSameContent(file1, file2)).isFalse();
+        assertThat(underTest.haveSameContent(file2, file1)).isFalse();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldHaveSameContentLargerFiles(String fsType, Path input, Path output) throws IOException {
+        // given
+        String content = Files.readString(Paths.get("pom.xml"));
+        Path file1 = io.write(input.resolve("test-file.jpg"), content + content + content);
+        Path file2 = io.write(input.resolve("2nd").resolve("test-file.jpg"), content + content + content);
+
+        // then
+        assertThat(underTest.haveSameContent(file1, file2)).isTrue();
+        assertThat(underTest.haveSameContent(file2, file1)).isTrue();
     }
 
     @ParameterizedTest(name = "{0}")
@@ -378,5 +405,78 @@ class IoServiceTest {
         assertThat(second1.getData().get("ok location").getCount()).isEqualTo(1);
         assertThat(second1.getData().get("ok location").getBytes()).isEqualTo(5);
         assertThat(second2).isSameAs(second1);
+    }
+
+    @Test
+    void shouldPrintBytesInHex() {
+        for (int i = Byte.MIN_VALUE; i <= Byte.MAX_VALUE; i++) {
+            byte b = (byte) i;
+            System.out.printf("%d - '%s'\n", b, Integer.toString((b & 0xff) + 0x100, 16).substring(1));
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldDeleteAllEmptyDirectories(String fsType, Path input, Path output) throws IOException {
+        // given
+        Files.createDirectories(input.resolve("test").resolve("second").resolve("other"));
+        underTest.setDelete(true);
+
+        // when
+        underTest.deleteEmpty(input, input.resolve("test").resolve("second").resolve("other"));
+
+        // then
+        assertThat(input.resolve("test").resolve("second").resolve("other")).doesNotExist();
+        assertThat(input.resolve("test").resolve("second")).doesNotExist();
+        assertThat(input.resolve("test")).doesNotExist();
+        assertThat(input).exists();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldDeleteSomeEmptyDirectories(String fsType, Path input, Path output) throws IOException {
+        // given
+        Files.createDirectories(input.resolve("test").resolve("second").resolve("other"));
+        io.write(input.resolve("test").resolve("test-file.jpg"), "testX");
+        underTest.setDelete(true);
+
+        // when
+        underTest.deleteEmpty(input, input.resolve("test").resolve("second").resolve("other"));
+
+        // then
+        assertThat(input.resolve("test").resolve("second").resolve("other")).doesNotExist();
+        assertThat(input.resolve("test").resolve("second")).doesNotExist();
+        assertThat(input.resolve("test")).exists();
+        assertThat(input).exists();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldNotDeleteNonEmptyDirectories(String fsType, Path input, Path output) throws IOException {
+        // given
+        Files.createDirectories(input.resolve("test").resolve("second").resolve("other"));
+        underTest.setDelete(true);
+
+        // when
+        underTest.deleteEmpty(input, input.resolve("test").resolve("second"));
+
+        // then
+        assertThat(input.resolve("test").resolve("second").resolve("other")).exists();
+        assertThat(input.resolve("test").resolve("second")).exists();
+        assertThat(input.resolve("test")).exists();
+        assertThat(input).exists();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldNotDeleteRoot(String fsType, Path input, Path output) throws IOException {
+        // given
+        underTest.setDelete(true);
+
+        // when
+        underTest.deleteEmpty(input, input.resolve("other").getParent().toAbsolutePath());
+
+        // then
+        assertThat(input).exists();
     }
 }

@@ -68,16 +68,10 @@ public class IoService {
         return result;
     }
 
-    public boolean hasSameContent(Path source, Path target) throws IOException {
+    public boolean haveSameContent(Path source, Path target) throws IOException {
         if (Files.exists(source) && Files.exists(target) && io.size(source) == io.size(target)) {
-            String sourceHash = io.hash(source);
-            String targetHash = io.hash(target);
-            if (sourceHash.equals(targetHash)) {
-                logger.info("duplicate", source, "=", target);
-                return true;
-            } else {
-                return false;
-            }
+            return io.haveSameContent(source, target);
+            // return io.hash(source).equals(io.hash(target));
         } else {
             return false;
         }
@@ -108,8 +102,13 @@ public class IoService {
     }
 
     public void move(Path source, Path target) throws IOException {
-        logger.info("move", source, ">", target);
-        statistics.add("move", io.size(source));
+        if (source.toAbsolutePath().getParent().equals(target.toAbsolutePath().getParent())) {
+            logger.info("rename", source, ">", target);
+            statistics.add("rename", io.size(source));
+        } else {
+            logger.info("move", source, ">", target);
+            statistics.add("move", io.size(source));
+        }
 
         if (move) {
             io.move(source, target);
@@ -118,8 +117,13 @@ public class IoService {
 
     public Path moveAsNew(Path source, Path orgTarget) throws IOException {
         Path target = buildUniquePath(orgTarget);
-        logger.info("move new", source, ">", target);
-        statistics.add("move new", io.size(source));
+        if (source.toAbsolutePath().getParent().equals(target.toAbsolutePath().getParent())) {
+            logger.info("rename new", source, ">", target);
+            statistics.add("rename new", io.size(source));
+        } else {
+            logger.info("move new", source, ">", target);
+            statistics.add("move new", io.size(source));
+        }
 
         if (move) {
             io.move(source, target);
@@ -147,6 +151,19 @@ public class IoService {
         }
     }
 
+    public void deleteEmpty(Path root, Path orgPath) throws IOException {
+        Path path = orgPath.normalize().toAbsolutePath();
+        while (Files.exists(path) && Files.isDirectory(path) && Files.list(path).findAny().isEmpty() && path.startsWith(root) && !path.equals(root)) {
+            logger.info("delete empty", path);
+            statistics.add("delete empty", 0);
+
+            if (delete) {
+                io.delete(path);
+            }
+            path = path.getParent().toAbsolutePath();
+        }
+    }
+
     public boolean isSameFile(Path source, Path target) throws IOException {
         return io.isSameFile(source, target);
     }
@@ -162,7 +179,7 @@ public class IoService {
     }
 
     public void reportNoMatch(Path path) throws IOException {
-        logger.debug("no match", path);
+        logger.info("no match", path);
         statistics.add("no match", io.size(path));
     }
 
