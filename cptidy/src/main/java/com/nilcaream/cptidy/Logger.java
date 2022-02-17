@@ -4,6 +4,9 @@ import ch.qos.logback.classic.Level;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Singleton;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -15,6 +18,8 @@ public class Logger {
     private final org.slf4j.Logger logger = LoggerFactory.getLogger(getClass());
 
     private final List<String> errors = new ArrayList<>();
+
+    private Statistics statistics = new Statistics("statistics");
 
     public void setDebug() {
         ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).setLevel(Level.DEBUG);
@@ -36,6 +41,18 @@ public class Logger {
         logger.info("{} {}", formatStatus(status), asString(messages));
     }
 
+    public void infoStat(String status, Path path, Object... messages) throws IOException {
+        String formattedStatus = formatStatus(status);
+        logger.info("{} {} {}", formattedStatus, path.toString(), asString(messages));
+        statistics.add(formattedStatus, size(path));
+    }
+
+    public void debugStat(String status, Path path, Object... messages) throws IOException {
+        String formattedStatus = formatStatus(status);
+        logger.info("{} {} {}", formattedStatus, path.toString(), asString(messages));
+        statistics.add(formattedStatus, size(path));
+    }
+
     public void warn(String status, Object... messages) {
         logger.warn("{} {}", formatStatus(status), asString(messages));
     }
@@ -48,6 +65,14 @@ public class Logger {
     public void error(String status, Throwable e, Object... messages) {
         logger.error(formatStatus(status) + " " + asString(messages), e);
         storeError(status, e, asString(messages));
+    }
+
+    private long size(Path path) throws IOException {
+        if (Files.isDirectory(path)) {
+            return 0;
+        } else {
+            return Files.size(path);
+        }
     }
 
     public List<String> getErrors() {
@@ -70,7 +95,17 @@ public class Logger {
     }
 
     private String formatStatus(String status) {
-        String upper = status.toUpperCase().replace(" ", "-").trim();
+        String upper = status.toUpperCase().replaceAll("[^A-Z]+", "-").trim();
         return (upper + "                                ").substring(0, 16);
+    }
+
+    public Statistics getStatistics() {
+        return statistics;
+    }
+
+    public Statistics resetStatistics(String id) {
+        Statistics previous = statistics;
+        statistics = new Statistics(id);
+        return previous;
     }
 }

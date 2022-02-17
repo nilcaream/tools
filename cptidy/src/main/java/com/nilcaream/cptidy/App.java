@@ -72,7 +72,7 @@ public class App {
         app.marker.setPeriod(5000);
         app.explicitDates.stream()
                 .map(date -> date.split("=", 2))
-                .forEach(s -> app.ioService.getExplicitDates().add(s[0], s[1]));
+                .forEach(s -> app.ioService.addDate(s[0], s[1]));
 
         if (app.targetDirectory == null) {
             app.logger.error("no input", "Provide input arguments: -i sourceDirectory -o targetDirectory");
@@ -153,7 +153,7 @@ public class App {
 
     private void organize(String id, Path sourceRoot, Path targetRoot) {
         logger.info(id, sourceRoot, ">", targetRoot);
-        ioService.resetStatistics(id);
+        logger.resetStatistics(id);
         marker.reset();
 
         try (Stream<Path> walk = Files.walk(sourceRoot)) {
@@ -163,17 +163,13 @@ public class App {
                     Path target = ioService.buildMatchingTarget(source, targetRoot);
                     if (target == null) {
                         // file is not matching target pattern or has no exif date
-                        ioService.reportNoMatch(source);
                     } else if (ioService.isSameFile(source, target)) {
                         // file is already in target location
-                        ioService.reportOkLocation(source);
+                        logger.infoStat("ok location", source);
                     } else if (ioService.haveSameContent(source, target)) {
                         // duplicate detected
-                        logger.info("duplicate", source, "=", target);
+                        logger.infoStat("duplicate", source, "=", target);
                         ioService.delete(source);
-                    } else if (Files.exists(target)) {
-                        // target exists but is a different file
-                        ioService.moveAsNew(source, target);
                     } else {
                         // just move to target
                         ioService.move(source, target);
@@ -186,14 +182,14 @@ public class App {
             logger.error("error", e, "Directory processing error");
         }
 
-        statistics.add(ioService.getStatistics());
+        statistics.add(logger.getStatistics());
         logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
     }
 
     private void removeDuplicates(String id, Path targetRoot) {
         logger.info(id, targetRoot);
-        ioService.resetStatistics(id);
+        logger.resetStatistics(id);
         marker.reset();
 
         try (Stream<Path> walk = Files.walk(targetRoot)) {
@@ -206,7 +202,7 @@ public class App {
                             .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
                             .forEach(path -> {
                                 count[0]++;
-                                long size = size(path);
+                                long size = ioService.size(path);
                                 List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
                                 paths.add(path);
                             });
@@ -221,8 +217,8 @@ public class App {
                                     for (Path copy : paths) {
                                         try {
                                             if (!ioService.isSameFile(file, copy) && ioService.haveSameContent(file, copy)) {
-                                                logger.info("duplicate", file, "=", copy);
-                                                ioService.delete(selectOne(file, copy));
+                                                logger.infoStat("duplicate", file, "=", copy);
+                                                ioService.deleteOne(file, copy);
                                             }
                                         } catch (IOException e) {
                                             logger.error("error", file, ":", copy);
@@ -238,14 +234,14 @@ public class App {
             logger.error("error", e, "Directory processing error");
         }
 
-        statistics.add(ioService.getStatistics());
+        statistics.add(logger.getStatistics());
         logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
     }
 
     private void removeEmpty(String id, Path targetRoot) {
         logger.info(id, targetRoot);
-        ioService.resetStatistics(id);
+        logger.resetStatistics(id);
         marker.reset();
 
         try (Stream<Path> walk = Files.walk(targetRoot)) {
@@ -261,28 +257,14 @@ public class App {
             logger.error("error", e, "Directory processing error");
         }
 
-        statistics.add(ioService.getStatistics());
+        statistics.add(logger.getStatistics());
         logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
     }
 
-    private Path selectOne(Path fileA, Path fileB) {
-        String nameA = fileA.getFileName().toString();
-        String nameB = fileB.getFileName().toString();
-        if (nameA.length() > nameB.length()) {
-            return fileA;
-        } else if (nameA.length() < nameB.length()) {
-            return fileB;
-        } else if (nameA.compareTo(nameB) > 0) {
-            return fileA;
-        } else {
-            return fileB;
-        }
-    }
-
     private void synchronize(String id, Path sourceRoot, Path targetRoot) {
         logger.info(id, sourceRoot, "=", targetRoot);
-        ioService.resetStatistics(id);
+        logger.resetStatistics(id);
         marker.reset();
 
         try (Stream<Path> walk = Files.walk(sourceRoot)) {
@@ -292,10 +274,7 @@ public class App {
                     Path target = ioService.buildCopyTarget(source, sourceRoot, targetRoot);
                     if (ioService.haveSameContent(source, target)) {
                         // file is already in present in target location
-                        ioService.reportOkLocation(source);
-                    } else if (Files.exists(target)) {
-                        // target exists but is a different file
-                        ioService.copyAsNew(source, target);
+                        logger.infoStat("ok location", source);
                     } else {
                         // file does not exist in target location
                         ioService.copy(source, target);
@@ -308,17 +287,9 @@ public class App {
             logger.error("error", e, "Directory processing error");
         }
 
-        statistics.add(ioService.getStatistics());
+        statistics.add(logger.getStatistics());
         logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
     }
 
-    private long size(Path path) {
-        try {
-            return Files.size(path);
-        } catch (IOException e) {
-            logger.error("size-error", path);
-            return -1;
-        }
-    }
 }

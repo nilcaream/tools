@@ -57,6 +57,10 @@ public class Io {
     }
 
     public boolean haveSameContent(Path pathA, Path pathB) throws IOException {
+        if (!Files.exists(pathA) || !Files.exists(pathB) || Files.size(pathA) != Files.size(pathB)) {
+            return false;
+        }
+
         byte[] bufferA = new byte[16 * 1024];
         byte[] bufferB = new byte[16 * 1024];
 
@@ -122,24 +126,6 @@ public class Io {
                     .collect(Collectors.toList());
         } catch (ImageProcessingException | IOException e) {
             throw new IllegalStateException(e);
-        }
-    }
-
-    public String getFileName(String input) {
-        int index = input.lastIndexOf(".");
-        if (index == -1) {
-            return input;
-        } else {
-            return input.substring(0, index);
-        }
-    }
-
-    public String getFileExtension(String input) {
-        int index = input.lastIndexOf(".");
-        if (index == -1) {
-            return "";
-        } else {
-            return input.substring(index + 1);
         }
     }
 }
