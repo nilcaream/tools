@@ -16,10 +16,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import static java.util.Collections.emptyList;
+
 public class App {
 
     @Option(value = "i", alternative = "input")
-    private List<String> sourceDirectories;
+    private List<String> sourceDirectories = emptyList();
 
     @Option(value = "o", alternative = "output")
     private String targetDirectory;
@@ -42,6 +44,9 @@ public class App {
     @Option(alternative = "no-empty")
     private boolean removeEmpty;
 
+    @Option(alternative = "date")
+    private List<String> explicitDates = emptyList();
+
     @Inject
     private IoService ioService;
 
@@ -62,8 +67,12 @@ public class App {
             app.logger.setDebug();
         }
 
+        app.printHeader(args);
+
         app.marker.setPeriod(5000);
-        app.printHeader();
+        app.explicitDates.stream()
+                .map(date -> date.split("=", 2))
+                .forEach(s -> app.ioService.getExplicitDates().add(s[0], s[1]));
 
         if (app.targetDirectory == null) {
             app.logger.error("no input", "Provide input arguments: -i sourceDirectory -o targetDirectory");
@@ -73,58 +82,42 @@ public class App {
             try {
                 if (app.organize) {
                     app.sourceDirectories.forEach(source -> {
-                        app.logger.info("organize", source, ">", app.targetDirectory);
                         app.organize("organize", Paths.get(source), Paths.get(app.targetDirectory));
                     });
                     if (app.reorganize) {
-                        app.logger.info("reorganize", app.targetDirectory);
                         app.organize("reorganize", Paths.get(app.targetDirectory), Paths.get(app.targetDirectory));
                     }
                     if (app.removeDuplicates) {
-                        app.logger.info("no-duplicates", app.targetDirectory);
                         app.removeDuplicates("no-duplicates", Paths.get(app.targetDirectory));
                     }
                     if (app.removeEmpty) {
-                        app.logger.info("no-empty", app.sourceDirectories.get(0));
                         app.removeEmpty("no-empty", Paths.get(app.sourceDirectories.get(0)));
                     }
                 } else if (app.synchronize) {
                     if (app.reorganize) {
-                        app.logger.info("reorganize-1", app.sourceDirectories.get(0));
                         app.organize("reorganize-1", Paths.get(app.sourceDirectories.get(0)), Paths.get(app.sourceDirectories.get(0)));
-                        app.logger.info("reorganize-2", app.targetDirectory);
                         app.organize("reorganize-2", Paths.get(app.targetDirectory), Paths.get(app.targetDirectory));
                     }
 
-                    app.logger.info("synchronize-1", app.sourceDirectories.get(0), "=", app.targetDirectory);
                     app.synchronize("synchronize-1", Paths.get(app.sourceDirectories.get(0)), Paths.get(app.targetDirectory));
-
-                    app.logger.info("synchronize-2", app.targetDirectory, "=", app.sourceDirectories.get(0));
                     app.synchronize("synchronize-2", Paths.get(app.targetDirectory), Paths.get(app.sourceDirectories.get(0)));
 
                     if (app.removeDuplicates) {
-                        app.logger.info("no-duplicates-1", app.sourceDirectories.get(0));
                         app.removeDuplicates("no-duplicates-1", Paths.get(app.sourceDirectories.get(0)));
-                        app.logger.info("no-duplicates-2", app.targetDirectory);
                         app.removeDuplicates("no-duplicates-2", Paths.get(app.targetDirectory));
                     }
                     if (app.removeEmpty) {
-                        app.logger.info("no-empty-1", app.sourceDirectories.get(0));
                         app.removeEmpty("no-empty-1", Paths.get(app.sourceDirectories.get(0)));
-                        app.logger.info("no-empty-2", app.targetDirectory);
                         app.removeEmpty("no-empty-2", Paths.get(app.targetDirectory));
                     }
                 } else {
                     if (app.reorganize) {
-                        app.logger.info("reorganize", app.targetDirectory);
                         app.organize("reorganize", Paths.get(app.targetDirectory), Paths.get(app.targetDirectory));
                     }
                     if (app.removeDuplicates) {
-                        app.logger.info("no-duplicates", app.targetDirectory);
                         app.removeDuplicates("no-duplicates", Paths.get(app.targetDirectory));
                     }
                     if (app.removeEmpty) {
-                        app.logger.info("no-empty", app.targetDirectory);
                         app.removeEmpty("no-empty", Paths.get(app.targetDirectory));
                     }
                 }
@@ -141,11 +134,16 @@ public class App {
         }
     }
 
-    private void printHeader() {
+    private void printHeader(String[] args) {
+        logger.label("");
+        logger.info("Arguments", String.join(" ", args));
         logger.info("Source", sourceDirectories);
         logger.info("Target", targetDirectory);
         logger.info("Options", opt("verbose", verbose), opt("copy", ioService.isCopy()), opt("move", ioService.isMove()), opt("delete", ioService.isDelete()));
         logger.info("Actions", opt("organize", organize), opt("reorganize", reorganize), opt("no-duplicates", removeDuplicates), opt("synchronize", synchronize), opt("no-empty", removeEmpty));
+        if (!explicitDates.isEmpty()) {
+            logger.info("Dates", String.join(" ", explicitDates));
+        }
         logger.label("");
     }
 
@@ -154,6 +152,7 @@ public class App {
     }
 
     private void organize(String id, Path sourceRoot, Path targetRoot) {
+        logger.info(id, sourceRoot, ">", targetRoot);
         ioService.resetStatistics(id);
         marker.reset();
 
@@ -163,7 +162,7 @@ public class App {
                     marker.mark(source);
                     Path target = ioService.buildMatchingTarget(source, targetRoot);
                     if (target == null) {
-                        // file is not matching target pattern
+                        // file is not matching target pattern or has no exif date
                         ioService.reportNoMatch(source);
                     } else if (ioService.isSameFile(source, target)) {
                         // file is already in target location
@@ -188,10 +187,12 @@ public class App {
         }
 
         statistics.add(ioService.getStatistics());
+        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
     }
 
     private void removeDuplicates(String id, Path targetRoot) {
+        logger.info(id, targetRoot);
         ioService.resetStatistics(id);
         marker.reset();
 
@@ -238,15 +239,19 @@ public class App {
         }
 
         statistics.add(ioService.getStatistics());
+        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
     }
 
     private void removeEmpty(String id, Path targetRoot) {
+        logger.info(id, targetRoot);
         ioService.resetStatistics(id);
+        marker.reset();
 
         try (Stream<Path> walk = Files.walk(targetRoot)) {
             walk.filter(Files::isDirectory).forEach(directory -> {
                 try {
+                    marker.mark(directory);
                     ioService.deleteEmpty(targetRoot, directory);
                 } catch (IOException e) {
                     logger.error("error", e, "Directory processing error");
@@ -257,6 +262,7 @@ public class App {
         }
 
         statistics.add(ioService.getStatistics());
+        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
     }
 
@@ -275,11 +281,14 @@ public class App {
     }
 
     private void synchronize(String id, Path sourceRoot, Path targetRoot) {
+        logger.info(id, sourceRoot, "=", targetRoot);
         ioService.resetStatistics(id);
+        marker.reset();
 
         try (Stream<Path> walk = Files.walk(sourceRoot)) {
             walk.filter(Files::isRegularFile).forEach(source -> {
                 try {
+                    marker.mark(source);
                     Path target = ioService.buildCopyTarget(source, sourceRoot, targetRoot);
                     if (ioService.haveSameContent(source, target)) {
                         // file is already in present in target location
@@ -300,6 +309,7 @@ public class App {
         }
 
         statistics.add(ioService.getStatistics());
+        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
     }
 

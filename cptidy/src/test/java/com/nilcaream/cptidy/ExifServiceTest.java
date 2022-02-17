@@ -26,10 +26,11 @@ class ExifServiceTest {
         Path source = Paths.get("src", "test", "resources", "exif-original.jpg");
 
         // when
-        String actual = underTest.getDate(source);
+        DateString actual = underTest.getDate(source);
 
         // then
-        assertThat(actual).isEqualTo("2008-05");
+        assertThat(actual.asShort()).isEqualTo("2008-05");
+        assertThat(actual.asLong()).isEqualTo("20080530");
     }
 
     @Test
@@ -38,7 +39,7 @@ class ExifServiceTest {
         Path source = Paths.get("src", "test", "resources", "no-exif.jpg");
 
         // when
-        String actual = underTest.getDate(source);
+        DateString actual = underTest.getDate(source);
 
         // then
         assertThat(actual).isNull();
@@ -50,9 +51,10 @@ class ExifServiceTest {
         Path source = Paths.get("src", "test", "resources", "exif-no-original.jpg");
 
         // when
-        String actual = underTest.getDate(source);
+        DateString actual = underTest.getDate(source);
 
         // then
-        assertThat(actual).isEqualTo("2022-02");
+        assertThat(actual.asShort()).isEqualTo("2022-02");
+        assertThat(actual.asLong()).isEqualTo("20220214");
     }
 }

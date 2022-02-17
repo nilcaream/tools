@@ -65,7 +65,45 @@ class IoServiceTest {
         Path actual = underTest.buildMatchingTarget(file, output);
 
         // then
-        assertThat(actual).isEqualTo(output.resolve("2011-02").resolve("test-file-20110219-0103.jpg"));
+        assertThat(actual).isEqualTo(output.resolve("2011-02").resolve("20110219-test-file--0103.jpg"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldCheckCaseForSameFile(String fsType, Path input, Path output) throws IOException {
+        // given
+        Path fileA = io.write(input.resolve("TEST.TXT"), "test");
+        Path fileB = io.write(input.resolve("test.txt"), "test");
+
+        // when
+        boolean actual = underTest.isSameFile(fileA, fileB);
+
+        // then
+        if (fsType.equals("UNIX")) {
+            assertThat(actual).isFalse();
+        } else {
+            assertThat(actual).isTrue();
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideFileSystem")
+    void shouldResolveNameWithExplicitDate(String fsType, Path input, Path output) throws IOException {
+        // given
+        Path file1 = io.write(input.resolve("TEST $file$20110219-0103.txt"), "test");
+        Path file2 = io.write(input.resolve("TEST #file$20110219-0103.jpg"), "test");
+        Path file3 = io.write(input.resolve("file-20110219-0103.jpg"), "test");
+        underTest.getExplicitDates().add(".+txt", "2000-04-11");
+
+        // when
+        Path actual1 = underTest.buildMatchingTarget(file1, output);
+        Path actual2 = underTest.buildMatchingTarget(file2, output);
+        Path actual3 = underTest.buildMatchingTarget(file3, output);
+
+        // then
+        assertThat(actual1).isEqualTo(output.resolve("2000-04").resolve("20000411-test-file--0103.txt"));
+        assertThat(actual2).isEqualTo(output.resolve("2011-02").resolve("20110219-test-file--0103.jpg"));
+        assertThat(actual3).isEqualTo(output.resolve("2011-02").resolve("20110219-file--0103.jpg"));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -73,13 +111,13 @@ class IoServiceTest {
     void shouldResolveNameWithExif(String fsType, Path input, Path output) throws IOException {
         // given
         Path file = io.write(input.resolve("test-file.jpg"), "test");
-        given(exifService.getDate(eq(file))).willReturn("2122-12");
+        given(exifService.getDate(eq(file))).willReturn(new DateString("2022", "12", "04"));
 
         // when
         Path actual = underTest.buildMatchingTarget(file, output);
 
         // then
-        assertThat(actual).isEqualTo(output.resolve("2122-12").resolve("test-file.jpg"));
+        assertThat(actual).isEqualTo(output.resolve("2022-12").resolve("20221204-test-file.jpg"));
     }
 
     @ParameterizedTest(name = "{0}")

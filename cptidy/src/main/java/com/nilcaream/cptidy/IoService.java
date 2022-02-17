@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 @Singleton
 public class IoService {
 
-    private static final Pattern SOURCE_FILE_NAME_PATTERN = Pattern.compile(".*(20[0-9]{2})([01][0-9])([0-9]{2})([^0-9]).+\\.(.{3,4})");
+    private static final Pattern SOURCE_FILE_NAME_PATTERN = Pattern.compile("(.*)((20[0123][0-9])([01][0-9])([0123][0-9]))([^0-9].+)");
     private static final Set<String> EXTENSIONS = Set.of("jpg", "jpeg", "mp4", "mpeg", "avi", "mov");
 
     @Inject
@@ -36,6 +36,7 @@ public class IoService {
     private boolean copy = false;
 
     private Statistics statistics = new Statistics("statistics");
+    private ExplicitDates explicitDates = new ExplicitDates();
 
     public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
         String sourceName = source.getFileName().toString().toLowerCase().replaceAll("[^.a-z0-9_-]+", "-");
@@ -43,17 +44,26 @@ public class IoService {
         Path result = null;
 
         String extension = io.getFileExtension(sourceName);
+        DateString explicitDate = explicitDates.getDate(sourceName);
 
-        if (matcher.matches()) {
+        if (explicitDate != null) {
+            logger.info("explicit date", source, ":", explicitDate);
+            statistics.add("explicit date", io.size(source));
+            result = targetRoot.resolve(explicitDate.asShort()).resolve(includeDate(source, sourceName, explicitDate));
+        } else if (matcher.matches()) {
             if (EXTENSIONS.contains(extension)) {
-                result = targetRoot.resolve(matcher.group(1) + "-" + matcher.group(2)).resolve(sourceName);
+                result = targetRoot.resolve(matcher.group(3) + "-" + matcher.group(4)).resolve(moveDateAsPrefix(source, sourceName));
             } else {
                 logger.warn("extension", source);
             }
         } else if (EXTENSIONS.contains(extension)) {
-            String date = exifService.getDate(source);
-            if (date != null) {
-                result = targetRoot.resolve(date).resolve(sourceName);
+            DateString date = exifService.getDate(source);
+            if (date == null && !sourceName.equals(source.getFileName().toString()) && source.getParent().startsWith(targetRoot)) {
+                result = source.resolveSibling(sourceName);
+                logger.info("no date rename", source, ">", result);
+                statistics.add("no date rename", io.size(source));
+            } else if (date != null) {
+                result = targetRoot.resolve(date.asShort()).resolve(includeDate(source, sourceName, date));
             }
         }
 
@@ -75,6 +85,38 @@ public class IoService {
         } else {
             return false;
         }
+    }
+
+    private String includeDate(Path source, String fileName, DateString dateString) throws IOException {
+        Matcher matcher = SOURCE_FILE_NAME_PATTERN.matcher(fileName);
+        String result;
+        if (matcher.matches()) {
+            result = dateString.asLong() + "-" + matcher.group(1) + matcher.group(6);
+            if (!result.equals(fileName)) {
+                logger.info("date replace", source, ">", result);
+                statistics.add("date replace", io.size(source));
+            }
+        } else {
+            result = dateString.asLong() + "-" + fileName;
+            if (!result.equals(fileName)) {
+                logger.info("date prefix", source, ">", result);
+                statistics.add("date prefix", io.size(source));
+            }
+        }
+        return result;
+    }
+
+    private String moveDateAsPrefix(Path source, String fileName) throws IOException {
+        Matcher matcher = SOURCE_FILE_NAME_PATTERN.matcher(fileName);
+        String result = fileName;
+        if (matcher.matches()) {
+            result = matcher.group(2) + "-" + matcher.group(1) + matcher.group(6);
+            if (!result.equals(fileName)) {
+                logger.info("date prefix", source, ">", result);
+                statistics.add("date prefix", io.size(source));
+            }
+        }
+        return result;
     }
 
     private Path buildUniquePath(Path path) {
@@ -216,5 +258,13 @@ public class IoService {
 
     public void setCopy(boolean copy) {
         this.copy = copy;
+    }
+
+    public ExplicitDates getExplicitDates() {
+        return explicitDates;
+    }
+
+    public void setExplicitDates(ExplicitDates explicitDates) {
+        this.explicitDates = explicitDates;
     }
 }

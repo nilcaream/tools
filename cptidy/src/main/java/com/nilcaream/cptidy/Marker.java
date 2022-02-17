@@ -30,4 +30,8 @@ public class Marker {
             time = now;
         }
     }
+
+    public long getElapsed() {
+        return currentTimeMillis() - time;
+    }
 }
