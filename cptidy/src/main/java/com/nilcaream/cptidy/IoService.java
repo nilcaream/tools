@@ -32,8 +32,8 @@ public class IoService {
     private boolean copy = false;
 
     public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
-        Path result = ofNullable(nameResolver.resolve(source)).map(targetRoot::resolve).orElse(null);
-        logger.debugStat("total", source);
+        Path result = ofNullable(nameResolver.resolve(source)).map(r -> r.resolve(targetRoot)).orElse(null);
+        logger.stat("total", source);
         return result;
     }
 
@@ -62,9 +62,9 @@ public class IoService {
         String nameA = fileA.getFileName().toString();
         String nameB = fileB.getFileName().toString();
         if (nameA.length() > nameB.length()) {
-            return fileA;
-        } else if (nameA.length() < nameB.length()) {
             return fileB;
+        } else if (nameA.length() < nameB.length()) {
+            return fileA;
         } else if (nameA.compareTo(nameB) > 0) {
             return fileA;
         } else {
@@ -111,13 +111,19 @@ public class IoService {
 
     public void deleteEmpty(Path root, Path orgPath) throws IOException {
         Path path = orgPath.normalize().toAbsolutePath();
-        while (Files.exists(path) && Files.isDirectory(path) && Files.list(path).findAny().isEmpty() && path.startsWith(root) && !path.equals(root)) {
-            logger.infoStat("delete empty", path);
+        while (Files.exists(path) && Files.isDirectory(path) && path.startsWith(root) && !path.equals(root)) {
+            long count = Files.list(path).count();
+            if (count == 0) {
+                logger.infoStat("delete empty", path);
 
-            if (delete) {
-                io.delete(path);
+                if (delete) {
+                    io.delete(path);
+                }
+                path = path.getParent().toAbsolutePath();
+            } else {
+                logger.infoStat("not empty", path, ":", count, "elements");
+                break;
             }
-            path = path.getParent().toAbsolutePath();
         }
     }
 
@@ -125,7 +131,7 @@ public class IoService {
         try {
             return io.size(path);
         } catch (IOException e) {
-            logger.error("size-error", path);
+            logger.error("size-error", e, path);
             return -1;
         }
     }
@@ -136,10 +142,6 @@ public class IoService {
 
     public Path buildCopyTarget(Path source, Path sourceRoot, Path targetRoot) {
         return targetRoot.resolve(sourceRoot.relativize(source));
-    }
-
-    public void addDate(String patternText, String date) {
-        nameResolver.addDate(patternText, date);
     }
 
     // --------------------------------

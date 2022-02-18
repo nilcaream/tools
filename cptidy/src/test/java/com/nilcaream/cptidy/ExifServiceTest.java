@@ -29,7 +29,6 @@ class ExifServiceTest {
         DateString actual = underTest.getDate(source);
 
         // then
-        assertThat(actual.asShort()).isEqualTo("2008-05");
         assertThat(actual.asLong()).isEqualTo("20080530");
     }
 
@@ -54,7 +53,6 @@ class ExifServiceTest {
         DateString actual = underTest.getDate(source);
 
         // then
-        assertThat(actual.asShort()).isEqualTo("2022-02");
         assertThat(actual.asLong()).isEqualTo("20220214");
     }
 }

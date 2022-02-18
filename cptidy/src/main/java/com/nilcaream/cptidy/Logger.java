@@ -37,6 +37,10 @@ public class Logger {
         logger.info("{} ----------------------------------------------------------------", formatStatus(status));
     }
 
+    public void stat(String status, Path path) throws IOException {
+        statistics.add(formatStatus(status).trim(), size(path));
+    }
+
     public void info(String status, Object... messages) {
         logger.info("{} {}", formatStatus(status), asString(messages));
     }
@@ -44,13 +48,13 @@ public class Logger {
     public void infoStat(String status, Path path, Object... messages) throws IOException {
         String formattedStatus = formatStatus(status);
         logger.info("{} {} {}", formattedStatus, path.toString(), asString(messages));
-        statistics.add(formattedStatus, size(path));
+        statistics.add(formattedStatus.trim(), size(path));
     }
 
     public void debugStat(String status, Path path, Object... messages) throws IOException {
         String formattedStatus = formatStatus(status);
-        logger.info("{} {} {}", formattedStatus, path.toString(), asString(messages));
-        statistics.add(formattedStatus, size(path));
+        logger.debug("{} {} {}", formattedStatus, path.toString(), asString(messages));
+        statistics.add(formattedStatus.trim(), size(path));
     }
 
     public void warn(String status, Object... messages) {
@@ -81,7 +85,7 @@ public class Logger {
 
     private void storeError(Object... messages) {
         errors.add(asString(messages));
-        if (errors.size() > 32) {
+        if (errors.size() > 16) {
             throw new IllegalStateException("Exceeded max error count");
         }
     }
@@ -95,7 +99,7 @@ public class Logger {
     }
 
     private String formatStatus(String status) {
-        String upper = status.toUpperCase().replaceAll("[^A-Z]+", "-").trim();
+        String upper = status.toUpperCase().trim().replaceAll("[^A-Z]+", "-");
         return (upper + "                                ").substring(0, 16);
     }
 

@@ -48,7 +48,7 @@ public class Statistics {
 
         @Override
         public String toString() {
-            return String.format("%d elements, %.3f MB", count, bytes / (1024.0 * 1024.0));
+            return String.format("%d entries, %.3f MB", count, bytes / (1024.0 * 1024.0));
         }
     }
 }

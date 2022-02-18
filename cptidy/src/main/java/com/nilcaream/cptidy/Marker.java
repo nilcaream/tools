@@ -11,8 +11,8 @@ public class Marker {
     @Inject
     private Logger logger;
 
-    private long now = currentTimeMillis();
-    private long time = currentTimeMillis();
+    private long start;
+    private long lastMark;
     private long period = 1000;
 
     public void setPeriod(long period) {
@@ -20,18 +20,18 @@ public class Marker {
     }
 
     public void reset() {
-        time = currentTimeMillis();
+        start = currentTimeMillis();
+        lastMark = start;
     }
 
     public void mark(Object object) {
-        now = currentTimeMillis();
-        if (now - time > period) {
+        if (currentTimeMillis() - lastMark > period) {
             logger.info("mark", object);
-            time = now;
+            lastMark = currentTimeMillis();
         }
     }
 
     public long getElapsed() {
-        return currentTimeMillis() - time;
+        return currentTimeMillis() - start;
     }
 }

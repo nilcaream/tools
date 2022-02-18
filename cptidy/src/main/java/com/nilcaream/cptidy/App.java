@@ -5,17 +5,11 @@ import com.nilcaream.utilargs.Option;
 import com.nilcaream.utilargs.UtilArgs;
 
 import javax.inject.Inject;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Stream;
 
+import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
 
 public class App {
@@ -56,6 +50,12 @@ public class App {
     @Inject
     private Marker marker;
 
+    @Inject
+    private Actions actions;
+
+    @Inject
+    private NameResolver nameResolver;
+
     private final List<Statistics> statistics = new ArrayList<>();
 
     public static void main(String[] args) {
@@ -63,74 +63,95 @@ public class App {
         UtilArgs.bind(args, app);
         UtilArgs.bind(args, app.ioService);
 
-        if (app.verbose) {
-            app.logger.setDebug();
+        app.initialize(args);
+        app.execute();
+    }
+
+    private void initialize(String[] args) {
+        if (verbose) {
+            logger.setDebug();
         }
 
-        app.printHeader(args);
+        printHeader(args);
 
-        app.marker.setPeriod(5000);
-        app.explicitDates.stream()
+        marker.setPeriod(5000);
+        explicitDates.stream()
                 .map(date -> date.split("=", 2))
-                .forEach(s -> app.ioService.addDate(s[0], s[1]));
+                .forEach(s -> nameResolver.addDate(s[0], s[1]));
+    }
 
-        if (app.targetDirectory == null) {
-            app.logger.error("no input", "Provide input arguments: -i sourceDirectory -o targetDirectory");
-            app.logger.error("actions", "(--organize|--synchronize) --reorganize --no-duplicates --no-empty");
-            app.logger.error("options", "--copy --move --delete");
+    private void execute() {
+        if (targetDirectory == null) {
+            logger.error("no input", "Provide input arguments: -i sourceDirectory -o targetDirectory");
+            logger.error("actions", "(--organize|--synchronize) --reorganize --no-duplicates --no-empty");
+            logger.error("options", "--copy --move --delete");
         } else {
+            long time = currentTimeMillis();
             try {
-                if (app.organize) {
-                    app.sourceDirectories.forEach(source -> {
-                        app.organize("organize", Paths.get(source), Paths.get(app.targetDirectory));
+                String sourceDirectory = sourceDirectories.isEmpty() ? null : sourceDirectories.get(0);
+                if (organize) {
+                    sourceDirectories.forEach(source -> {
+                        statistics.add(actions.organize("organize", Paths.get(source), Paths.get(targetDirectory)));
                     });
-                    if (app.reorganize) {
-                        app.organize("reorganize", Paths.get(app.targetDirectory), Paths.get(app.targetDirectory));
+                    if (reorganize) {
+                        statistics.add(actions.organize("reorganize", Paths.get(targetDirectory), Paths.get(targetDirectory)));
                     }
-                    if (app.removeDuplicates) {
-                        app.removeDuplicates("no-duplicates", Paths.get(app.targetDirectory));
+                    if (removeDuplicates) {
+                        statistics.add(actions.removeDuplicates("no-duplicates", Paths.get(targetDirectory)));
                     }
-                    if (app.removeEmpty) {
-                        app.removeEmpty("no-empty", Paths.get(app.sourceDirectories.get(0)));
+                    if (removeEmpty) {
+                        assertNotNull(sourceDirectory, "Source directory is needed for no-empty action");
+                        statistics.add(actions.removeEmpty("no-empty", Paths.get(sourceDirectory)));
                     }
-                } else if (app.synchronize) {
-                    if (app.reorganize) {
-                        app.organize("reorganize-1", Paths.get(app.sourceDirectories.get(0)), Paths.get(app.sourceDirectories.get(0)));
-                        app.organize("reorganize-2", Paths.get(app.targetDirectory), Paths.get(app.targetDirectory));
+                } else if (synchronize) {
+                    if (reorganize) {
+                        assertNotNull(sourceDirectory, "Source directory is needed for reorganize action");
+                        statistics.add(actions.organize("reorganize-1", Paths.get(sourceDirectory), Paths.get(sourceDirectory)));
+                        statistics.add(actions.organize("reorganize-2", Paths.get(targetDirectory), Paths.get(targetDirectory)));
                     }
 
-                    app.synchronize("synchronize-1", Paths.get(app.sourceDirectories.get(0)), Paths.get(app.targetDirectory));
-                    app.synchronize("synchronize-2", Paths.get(app.targetDirectory), Paths.get(app.sourceDirectories.get(0)));
+                    assertNotNull(sourceDirectory, "Source directory is needed for synchronize action");
+                    statistics.add(actions.synchronize("synchronize-1", Paths.get(sourceDirectory), Paths.get(targetDirectory)));
+                    statistics.add(actions.synchronize("synchronize-2", Paths.get(targetDirectory), Paths.get(sourceDirectory)));
 
-                    if (app.removeDuplicates) {
-                        app.removeDuplicates("no-duplicates-1", Paths.get(app.sourceDirectories.get(0)));
-                        app.removeDuplicates("no-duplicates-2", Paths.get(app.targetDirectory));
+                    if (removeDuplicates) {
+                        statistics.add(actions.removeDuplicates("no-duplicates-1", Paths.get(sourceDirectory)));
+                        statistics.add(actions.removeDuplicates("no-duplicates-2", Paths.get(targetDirectory)));
                     }
-                    if (app.removeEmpty) {
-                        app.removeEmpty("no-empty-1", Paths.get(app.sourceDirectories.get(0)));
-                        app.removeEmpty("no-empty-2", Paths.get(app.targetDirectory));
+                    if (removeEmpty) {
+                        statistics.add(actions.removeEmpty("no-empty-1", Paths.get(sourceDirectory)));
+                        statistics.add(actions.removeEmpty("no-empty-2", Paths.get(targetDirectory)));
                     }
                 } else {
-                    if (app.reorganize) {
-                        app.organize("reorganize", Paths.get(app.targetDirectory), Paths.get(app.targetDirectory));
+                    if (reorganize) {
+                        statistics.add(actions.organize("reorganize", Paths.get(targetDirectory), Paths.get(targetDirectory)));
                     }
-                    if (app.removeDuplicates) {
-                        app.removeDuplicates("no-duplicates", Paths.get(app.targetDirectory));
+                    if (removeDuplicates) {
+                        statistics.add(actions.removeDuplicates("no-duplicates", Paths.get(targetDirectory)));
                     }
-                    if (app.removeEmpty) {
-                        app.removeEmpty("no-empty", Paths.get(app.targetDirectory));
+                    if (removeEmpty) {
+                        statistics.add(actions.removeEmpty("no-empty", Paths.get(targetDirectory)));
                     }
                 }
             } finally {
-                app.statistics.stream().filter(Statistics::hasData).forEach(stats -> {
-                    app.logger.label(stats.getId());
-                    stats.getData().forEach((k, v) -> app.logger.info(k, v.toString()));
+                statistics.stream().filter(Statistics::hasData).forEach(stats -> {
+                    logger.label(stats.getId());
+                    stats.getData().forEach((k, v) -> logger.info(k, v.toString()));
                 });
-                if (!app.logger.getErrors().isEmpty()) {
-                    app.logger.label("errors");
-                    app.logger.getErrors().forEach(e -> app.logger.warn("error", e));
+                if (!logger.getErrors().isEmpty()) {
+                    logger.label("errors");
+                    logger.getErrors().forEach(e -> logger.warn("error", e));
                 }
+                logger.label("");
+                logger.info("", "total time", (currentTimeMillis() - time) / 1000, "seconds");
             }
+        }
+    }
+
+    private void assertNotNull(Object object, String message) {
+        if (object == null) {
+            logger.error("null", message);
+            throw new IllegalStateException(message);
         }
     }
 
@@ -150,146 +171,4 @@ public class App {
     private String opt(String key, boolean value) {
         return value ? key : "";
     }
-
-    private void organize(String id, Path sourceRoot, Path targetRoot) {
-        logger.info(id, sourceRoot, ">", targetRoot);
-        logger.resetStatistics(id);
-        marker.reset();
-
-        try (Stream<Path> walk = Files.walk(sourceRoot)) {
-            walk.filter(Files::isRegularFile).forEach(source -> {
-                try {
-                    marker.mark(source);
-                    Path target = ioService.buildMatchingTarget(source, targetRoot);
-                    if (target == null) {
-                        // file is not matching target pattern or has no exif date
-                    } else if (ioService.isSameFile(source, target)) {
-                        // file is already in target location
-                        logger.infoStat("ok location", source);
-                    } else if (ioService.haveSameContent(source, target)) {
-                        // duplicate detected
-                        logger.infoStat("duplicate", source, "=", target);
-                        ioService.delete(source);
-                    } else {
-                        // just move to target
-                        ioService.move(source, target);
-                    }
-                } catch (IOException e) {
-                    logger.error("error", e, "File processing error");
-                }
-            });
-        } catch (IOException e) {
-            logger.error("error", e, "Directory processing error");
-        }
-
-        statistics.add(logger.getStatistics());
-        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
-        logger.label("");
-    }
-
-    private void removeDuplicates(String id, Path targetRoot) {
-        logger.info(id, targetRoot);
-        logger.resetStatistics(id);
-        marker.reset();
-
-        try (Stream<Path> walk = Files.walk(targetRoot)) {
-            walk.filter(Files::isDirectory).forEach(directory -> {
-                try {
-                    marker.mark(directory);
-                    int[] count = new int[]{0};
-                    Map<Long, List<Path>> sizeToPaths = new HashMap<>();
-                    Files.list(directory)
-                            .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
-                            .forEach(path -> {
-                                count[0]++;
-                                long size = ioService.size(path);
-                                List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
-                                paths.add(path);
-                            });
-                    logger.info("directory", directory, ":", count[0], "files");
-
-                    sizeToPaths.entrySet().stream()
-                            .filter(e -> e.getKey() > 1024)
-                            .filter(e -> e.getValue().size() > 1)
-                            .map(Map.Entry::getValue)
-                            .forEach(paths -> {
-                                for (Path file : paths) {
-                                    for (Path copy : paths) {
-                                        try {
-                                            if (!ioService.isSameFile(file, copy) && ioService.haveSameContent(file, copy)) {
-                                                logger.infoStat("duplicate", file, "=", copy);
-                                                ioService.deleteOne(file, copy);
-                                            }
-                                        } catch (IOException e) {
-                                            logger.error("error", file, ":", copy);
-                                        }
-                                    }
-                                }
-                            });
-                } catch (IOException e) {
-                    logger.error("error", e, "File processing error");
-                }
-            });
-        } catch (IOException e) {
-            logger.error("error", e, "Directory processing error");
-        }
-
-        statistics.add(logger.getStatistics());
-        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
-        logger.label("");
-    }
-
-    private void removeEmpty(String id, Path targetRoot) {
-        logger.info(id, targetRoot);
-        logger.resetStatistics(id);
-        marker.reset();
-
-        try (Stream<Path> walk = Files.walk(targetRoot)) {
-            walk.filter(Files::isDirectory).forEach(directory -> {
-                try {
-                    marker.mark(directory);
-                    ioService.deleteEmpty(targetRoot, directory);
-                } catch (IOException e) {
-                    logger.error("error", e, "Directory processing error");
-                }
-            });
-        } catch (IOException e) {
-            logger.error("error", e, "Directory processing error");
-        }
-
-        statistics.add(logger.getStatistics());
-        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
-        logger.label("");
-    }
-
-    private void synchronize(String id, Path sourceRoot, Path targetRoot) {
-        logger.info(id, sourceRoot, "=", targetRoot);
-        logger.resetStatistics(id);
-        marker.reset();
-
-        try (Stream<Path> walk = Files.walk(sourceRoot)) {
-            walk.filter(Files::isRegularFile).forEach(source -> {
-                try {
-                    marker.mark(source);
-                    Path target = ioService.buildCopyTarget(source, sourceRoot, targetRoot);
-                    if (ioService.haveSameContent(source, target)) {
-                        // file is already in present in target location
-                        logger.infoStat("ok location", source);
-                    } else {
-                        // file does not exist in target location
-                        ioService.copy(source, target);
-                    }
-                } catch (IOException e) {
-                    logger.error("error", e, "File processing error");
-                }
-            });
-        } catch (IOException e) {
-            logger.error("error", e, "Directory processing error");
-        }
-
-        statistics.add(logger.getStatistics());
-        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
-        logger.label("");
-    }
-
 }
