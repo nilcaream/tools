@@ -5,6 +5,7 @@ import javax.inject.Singleton;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -15,7 +16,7 @@ public class NameResolver {
 
     // 1 - prefix, 2 - yyyyMMdd, 3 - yyyy, 4 - MM, 5 - dd, 6 - suffix
     private static final Pattern NAME_EXTENSION = Pattern.compile("(.*)((20[0123][0-9])([01][0-9])([0123][0-9]))([^0-9].+)");
-    private static final Set<String> EXTENSIONS = Set.of(".jpg", ".jpeg", ".mp4", ".mpeg", ".avi", ".mov");
+    private static final Set<String> EXTENSIONS = Set.of(".jpg", ".jpeg", ".mp4", ".mpeg", ".avi", ".mov", ".mts");
 
     @Inject
     private Logger logger;
@@ -44,7 +45,7 @@ public class NameResolver {
         Result result = null;
         Matcher matcher = NAME_EXTENSION.matcher(inputNameExtension);
 
-        DateString explicitDate = explicitDates.getDate(inputNameExtension);
+        DateString explicitDate = explicitDates.getDate(input);
 
         if (explicitDate != null) {
             result = new Result(explicitDate.asShort(), overrideDate(status, inputNameExtension, explicitDate.asLong()));
@@ -53,8 +54,13 @@ public class NameResolver {
             result = new Result(date.asShort(), prefixDate(status, nameExtension, matcher));
         } else if (EXTENSIONS.contains(extension)) {
             DateString date = exifService.getDate(input);
+            BasicFileAttributes attr = Files.readAttributes(input, BasicFileAttributes.class);
+            String fileDateTime = attr.creationTime().toString().substring(0, 7);
             if (date != null) {
                 result = new Result(date.asShort(), exifDate(status, nameExtension, date.asLong()));
+            } else if (input.getFileName().toString().contains(fileDateTime)) {
+                date = new DateString(attr.creationTime().toString().substring(0, 10));
+                result = new Result(date.asShort(), fileDate(status, nameExtension, date.asLong()));
             }
         }
 
@@ -100,6 +106,15 @@ public class NameResolver {
         String result = prepareOnly(nameExtension);
         if (!result.equals(nameExtension)) {
             statusHolder.set(Status.NEW_NAME);
+        }
+        return result;
+    }
+
+    private String fileDate(StatusHolder statusHolder, String nameExtension, String date) {
+        String result = overrideDate(statusHolder, nameExtension, date);
+
+        if (!result.equals(nameExtension)) {
+            statusHolder.set(Status.FILE_DATE);
         }
         return result;
     }
@@ -173,6 +188,7 @@ public class NameResolver {
         PREFIX_DATE,
         OVERRIDE_DATE,
         EXIF_DATE,
+        FILE_DATE,
         NO_NAME_CHANGE
     }
 

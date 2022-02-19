@@ -89,10 +89,10 @@ class IoServiceTest {
     void shouldDeleteShorter() throws IOException {
         // given
         underTest.setDelete(true);
-        Path longer1 = io.write(root.resolve("file1.txt"), "test");
-        Path shorter1 = io.write(root.resolve("file.txt"), "test");
-        Path longer2 = io.write(root.resolve("file1.txt22"), "test");
-        Path shorter2 = io.write(root.resolve("file.txt22"), "test");
+        Path longer1 = io.write(root.resolve("4444.txt"), "test");
+        Path shorter1 = io.write(root.resolve("333.txt"), "test");
+        Path longer2 = io.write(root.resolve("4444.dat"), "test");
+        Path shorter2 = io.write(root.resolve("333.dat"), "test");
 
         // when
         underTest.deleteOne(longer1, shorter1);
@@ -106,7 +106,27 @@ class IoServiceTest {
     }
 
     @Test
-    void shouldNotDeleteLonger() throws IOException {
+    void shouldDeleteLongerWhenItStartsAsShorter() throws IOException {
+        // given
+        underTest.setDelete(true);
+        Path longer1 = io.write(root.resolve("333x.txt"), "test");
+        Path shorter1 = io.write(root.resolve("333.txt"), "test");
+        Path longer2 = io.write(root.resolve("333x.dat"), "test");
+        Path shorter2 = io.write(root.resolve("333.dat"), "test");
+
+        // when
+        underTest.deleteOne(longer1, shorter1);
+        underTest.deleteOne(shorter2, longer2);
+
+        // then
+        assertThat(longer1).doesNotExist();
+        assertThat(longer2).doesNotExist();
+        assertThat(shorter1).exists();
+        assertThat(shorter2).exists();
+    }
+
+    @Test
+    void shouldNotDeleteAny() throws IOException {
         // given
         underTest.setDelete(false);
         Path longer1 = io.write(root.resolve("file1.txt"), "test");

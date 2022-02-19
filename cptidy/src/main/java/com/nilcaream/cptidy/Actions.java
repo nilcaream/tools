@@ -6,7 +6,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Singleton
@@ -52,7 +55,7 @@ public class Actions {
             logger.error("error", e, "Directory processing error");
         }
 
-        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
+        logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
         return logger.getStatistics();
     }
@@ -105,7 +108,7 @@ public class Actions {
             logger.error("error", e, "Directory processing error");
         }
 
-        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
+        logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
         return logger.getStatistics();
     }
@@ -128,7 +131,7 @@ public class Actions {
             logger.error("error", e, "Directory processing error");
         }
 
-        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
+        logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
         return logger.getStatistics();
     }
@@ -158,7 +161,116 @@ public class Actions {
             logger.error("error", e, "Directory processing error");
         }
 
-        logger.info(id, "total time", marker.getElapsed() / 1000, "seconds");
+        logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
+        logger.label("");
+        return logger.getStatistics();
+    }
+
+    public Statistics analyze(String id, Path path) {
+        logger.info(id, path);
+        logger.resetStatistics(id);
+        marker.reset();
+
+        try {
+            Path target = Paths.get("");
+            List<Path> directories = Files.walk(path).filter(Files::isDirectory).sorted().collect(Collectors.toList());
+            logger.info("count", "Found", directories.size(), "directories");
+            for (Path directory : directories) {
+                List<Path> files = Files.list(directory)
+                        .filter(Files::isRegularFile)
+                        .peek(marker::mark)
+                        .sorted().collect(Collectors.toList());
+                for (Path file : files) {
+                    marker.mark(file);
+                    BasicFileAttributes attr = Files.readAttributes(file, BasicFileAttributes.class);
+                    Path match = ioService.buildMatchingTarget(file, target);
+                    String fileDateTime = attr.creationTime().toString().replaceAll("[TZ]", " ").trim();
+                    if (match == null) {
+                        logger.infoStat("failure", file, ":", "unknown", "|", fileDateTime);
+                    } else {
+                        String fileDate = fileDateTime.substring(0, 7);
+                        if (match.getParent().getFileName().toString().equals(fileDate)) {
+                            logger.infoStat("all match", file, ":", match, "|", fileDateTime);
+                        } else {
+                            logger.infoStat("partial match", file, ":", match, "|", fileDateTime);
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            logger.error("error", e, "File processing error");
+        }
+
+        logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
+        logger.label("");
+        return logger.getStatistics();
+    }
+
+    public Statistics findCopies(String id, Path source, Path target) {
+        logger.info(id, source, ":", target);
+        logger.resetStatistics(id);
+        marker.reset();
+
+        Map<Long, List<Path>> sizeToPaths = new HashMap<>();
+
+        logger.info("target", target);
+        try (Stream<Path> walk = Files.walk(target)) {
+            walk.filter(Files::isDirectory).forEach(directory -> {
+                try {
+                    marker.mark(directory);
+                    int[] count = new int[]{0};
+                    Files.list(directory)
+                            .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
+                            .forEach(path -> {
+                                count[0]++;
+                                marker.mark(path);
+                                long size = ioService.size(path);
+                                if (size > 1024) {
+                                    List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
+                                    paths.add(path);
+                                }
+                            });
+                    logger.info("directory", directory, ":", count[0], "files");
+                } catch (IOException e) {
+                    logger.error("error", e, "File processing error");
+                }
+            });
+        } catch (IOException e) {
+            logger.error("error", e, "Directory processing error");
+        }
+
+        logger.info("source", source);
+        try (Stream<Path> walk = Files.walk(source)) {
+            walk.filter(Files::isRegularFile).forEach(sourceFile -> {
+                try {
+                    logger.stat("total", sourceFile);
+
+                    marker.mark(sourceFile);
+                    long size = ioService.size(sourceFile);
+                    List<Path> targetFiles = sizeToPaths.get(size);
+                    boolean unique = true;
+                    if (targetFiles != null) {
+                        for (Path targetFile : targetFiles) {
+                            if (!ioService.isSameFile(sourceFile, targetFile) && ioService.haveSameContent(sourceFile, targetFile)) {
+                                logger.infoStat("duplicate", sourceFile, "=", targetFile);
+                                ioService.delete(sourceFile);
+                                unique = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (unique) {
+                        logger.infoStat("unique", sourceFile);
+                    }
+                } catch (IOException e) {
+                    logger.error("error", e, "File processing error");
+                }
+            });
+        } catch (IOException e) {
+            logger.error("error", e, "Directory processing error");
+        }
+
+        logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
         return logger.getStatistics();
     }

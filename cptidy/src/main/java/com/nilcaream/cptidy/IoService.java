@@ -59,16 +59,40 @@ public class IoService {
     }
 
     private Path selectOne(Path fileA, Path fileB) {
+        Path result;
         String nameA = fileA.getFileName().toString();
         String nameB = fileB.getFileName().toString();
-        if (nameA.length() > nameB.length()) {
-            return fileB;
-        } else if (nameA.length() < nameB.length()) {
-            return fileA;
-        } else if (nameA.compareTo(nameB) > 0) {
-            return fileA;
+
+        if (nameA.length() == nameB.length()) {
+            if (nameA.compareTo(nameB) > 0) {
+                result = fileA;
+            } else {
+                result = fileB;
+            }
         } else {
-            return fileB;
+            Path shorter = nameA.length() < nameB.length() ? fileA : fileB;
+            Path longer = shorter == fileA ? fileB : fileA;
+            String shorterName = getName(shorter == fileA ? nameA : nameB);
+            String longerName = getName(longer == fileA ? nameA : nameB);
+
+            if (longerName.startsWith(shorterName)) {
+                result = longer;
+            } else {
+                result = shorter;
+            }
+        }
+
+        return result;
+    }
+
+    // TODO - duplicate from NameResolver. Consider refactoring.
+    // test.txt -> test
+    private String getName(String nameExtension) {
+        int index = nameExtension.lastIndexOf(".");
+        if (index == -1) {
+            return nameExtension;
+        } else {
+            return nameExtension.substring(0, index);
         }
     }
 
