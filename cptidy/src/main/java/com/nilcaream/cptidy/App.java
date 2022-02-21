@@ -7,19 +7,21 @@ import com.nilcaream.utilargs.UtilArgs;
 import javax.inject.Inject;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
 import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
+import static java.util.Optional.ofNullable;
 
 public class App {
 
-    @Option(value = "i", alternative = "input")
+    @Option(alternative = "source")
     private List<String> sourceDirectories = emptyList();
 
-    @Option(value = "o", alternative = "output")
+    @Option(alternative = "target")
     private String targetDirectory;
 
     @Option(value = "v", alternative = "verbose")
@@ -42,6 +44,9 @@ public class App {
 
     @Option(alternative = "no-empty")
     private boolean removeEmpty;
+
+    @Option(alternative = "test")
+    private boolean test;
 
     @Option(alternative = "date")
     private List<String> explicitDates = emptyList();
@@ -81,7 +86,7 @@ public class App {
         logger.info("Arguments", String.join(" ", args));
         logger.info("Source", sourceDirectories);
         logger.info("Target", targetDirectory);
-        logger.info("Options", opt("verbose", verbose), opt("copy", ioService.isCopy()), opt("move", ioService.isMove()), opt("delete", ioService.isDelete()));
+        logger.info("Options", opt("verbose", verbose), opt("copy", ioService.isCopy()), opt("move", ioService.isMove()), opt("delete", ioService.isDelete()), opt("fast", ioService.isFast()));
         logger.info("Actions", opt("analyze", analyze), opt("organize", organize), opt("reorganize", reorganize), opt("no-duplicates", removeDuplicates), opt("synchronize", synchronize), opt("no-empty", removeEmpty));
 
         marker.setPeriod(5000);
@@ -111,68 +116,104 @@ public class App {
         logger.label("");
     }
 
-    private void execute() {
-        if (targetDirectory == null) {
-            logger.error("no input", "Provide input arguments: -i sourceDirectory -o targetDirectory");
-            logger.error("actions", "(--organize|--synchronize) --reorganize --no-duplicates --no-empty");
-            logger.error("options", "--copy --move --delete");
+    private boolean hasSource() {
+        return sourceDirectories != null && !sourceDirectories.isEmpty() && sourceDirectories.stream().noneMatch(String::isBlank);
+    }
+
+    private boolean hasTarget() {
+        return targetDirectory != null && !targetDirectory.isBlank();
+    }
+
+    private void requireAny() {
+        if (!hasSource() && !hasTarget()) {
+            fail();
+        }
+    }
+
+    private void require(boolean source, boolean target) {
+        if (source && !hasSource()) {
+            fail();
+        }
+        if (target && !hasTarget()) {
+            fail();
+        }
+    }
+
+    private void fail() {
+        logger.error("no input", "Provide input arguments: --source sourceDirectory --target targetDirectory");
+        logger.error("actions", "(--organize|--synchronize) --reorganize --no-duplicates --no-empty");
+        logger.error("options", "--copy --move --delete --fast");
+        System.exit(1);
+    }
+
+    private Path asPath(String text) {
+        return Paths.get(text).normalize().toAbsolutePath();
+    }
+
+    private void execute() throws IOException {
+        if (test) {
+            actions.test(asPath(ofNullable(targetDirectory).filter(t -> !t.isBlank()).orElse(".")));
         } else {
             long time = currentTimeMillis();
             try {
-                String sourceDirectory = sourceDirectories.isEmpty() ? null : sourceDirectories.get(0);
-                if (sourceDirectory == null || sourceDirectory.isBlank()) {
-                    sourceDirectory = null;
-                }
-
                 if (analyze) {
-                    statistics.add(actions.analyze("analyze", Paths.get(targetDirectory)));
-                } else if (organize) {
-                    sourceDirectories.forEach(source -> {
-                        statistics.add(actions.organize("organize", Paths.get(source), Paths.get(targetDirectory)));
+                    require(true, false);
+
+                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                        statistics.add(actions.analyze("analyze", source));
                     });
-                    if (reorganize) {
-                        statistics.add(actions.organize("reorganize", Paths.get(targetDirectory), Paths.get(targetDirectory)));
-                    }
+                } else if (organize) {
+                    require(true, true);
+
                     if (removeDuplicates) {
-                        statistics.add(actions.removeDuplicates("no-duplicates", Paths.get(targetDirectory)));
+                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                            statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory)));
+                        });
                     }
+
+                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                        statistics.add(actions.organize("organize", source, asPath(targetDirectory)));
+                    });
+
                     if (removeEmpty) {
-                        assertNotNull(sourceDirectory, "Source directory is needed for no-empty action");
-                        statistics.add(actions.removeEmpty("no-empty", Paths.get(sourceDirectory)));
+                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                            statistics.add(actions.removeEmpty("no-empty", source));
+                        });
+                    }
+                } else if (removeDuplicates) {
+                    require(true, true);
+
+                    if (removeDuplicates) {
+                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                            statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory)));
+                        });
+                    }
+                } else if (reorganize) {
+                    require(true, false);
+
+                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                        statistics.add(actions.organize("reorganize", source, source));
+                    });
+                } else if (removeEmpty) {
+                    requireAny();
+
+                    if (hasSource()) {
+                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                            statistics.add(actions.removeEmpty("no-empty", source));
+                        });
+                    }
+                    if (hasTarget()) {
+                        statistics.add(actions.removeEmpty("no-empty", asPath(targetDirectory)));
                     }
                 } else if (synchronize) {
-                    if (reorganize) {
-                        assertNotNull(sourceDirectory, "Source directory is needed for reorganize action");
-                        statistics.add(actions.organize("reorganize-1", Paths.get(sourceDirectory), Paths.get(sourceDirectory)));
-                        statistics.add(actions.organize("reorganize-2", Paths.get(targetDirectory), Paths.get(targetDirectory)));
-                    }
+                    require(true, true);
 
-                    assertNotNull(sourceDirectory, "Source directory is needed for synchronize action");
-                    statistics.add(actions.synchronize("synchronize-1", Paths.get(sourceDirectory), Paths.get(targetDirectory)));
-                    statistics.add(actions.synchronize("synchronize-2", Paths.get(targetDirectory), Paths.get(sourceDirectory)));
-
-                    if (removeDuplicates) {
-                        statistics.add(actions.removeDuplicates("no-duplicates-1", Paths.get(sourceDirectory)));
-                        statistics.add(actions.removeDuplicates("no-duplicates-2", Paths.get(targetDirectory)));
-                    }
-                    if (removeEmpty) {
-                        statistics.add(actions.removeEmpty("no-empty-1", Paths.get(sourceDirectory)));
-                        statistics.add(actions.removeEmpty("no-empty-2", Paths.get(targetDirectory)));
-                    }
+                    Path source = asPath(sourceDirectories.get(0));
+                    Path target = asPath(targetDirectory);
+                    statistics.add(actions.synchronize("synchronize-1", source, target));
+                    statistics.add(actions.synchronize("synchronize-2", target, source));
                 } else {
-                    if (reorganize) {
-                        statistics.add(actions.organize("reorganize", Paths.get(targetDirectory), Paths.get(targetDirectory)));
-                    }
-                    if (removeDuplicates) {
-                        if (sourceDirectory == null) {
-                            statistics.add(actions.removeDuplicates("no-duplicates", Paths.get(targetDirectory)));
-                        } else {
-                            statistics.add(actions.findCopies("no-copies", Paths.get(sourceDirectory), Paths.get(targetDirectory)));
-                        }
-                    }
-                    if (removeEmpty) {
-                        statistics.add(actions.removeEmpty("no-empty", Paths.get(targetDirectory)));
-                    }
+                    fail();
                 }
             } finally {
                 statistics.stream().filter(Statistics::hasData).forEach(stats -> {
@@ -186,13 +227,6 @@ public class App {
                 logger.label("");
                 logger.info("", "total time", (currentTimeMillis() - time) / 1000, "seconds");
             }
-        }
-    }
-
-    private void assertNotNull(Object object, String message) {
-        if (object == null) {
-            logger.error("null", message);
-            throw new IllegalStateException(message);
         }
     }
 

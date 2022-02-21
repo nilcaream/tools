@@ -1,5 +1,6 @@
 package com.nilcaream.cptidy;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,7 +17,13 @@ import static java.nio.file.StandardOpenOption.READ;
 @Singleton
 public class FileCompare {
 
-    private MessageDigest digest;
+    private final MessageDigest digest;
+
+    private final byte[] internalBufferA = new byte[16 * 1024 * 1024];
+    private final byte[] internalBufferB = new byte[16 * 1024 * 1024];
+
+    @Inject
+    private Logger logger;
 
     {
         try {
@@ -41,7 +48,63 @@ public class FileCompare {
             byte[] bufferA = new byte[bufferSize];
             byte[] bufferB = new byte[bufferSize];
 
-            int i;
+            return byteByByteWithProvidedBuffers(pathA, pathB, bufferA, bufferB);
+        }
+    }
+
+    public boolean fast(Path pathA, Path pathB) throws IOException {
+        if (areExplicitlyDifferent(pathA, pathB)) {
+            return false;
+        } else if (Files.size(pathA) < internalBufferA.length) {
+            return byteByByteWithProvidedBuffers(pathA, pathB, internalBufferA, internalBufferB);
+        } else {
+            long fileSize = Files.size(pathA);
+            long bufferSize = internalBufferA.length / 4;
+
+            try (FileChannel channelA = (FileChannel) Files.newByteChannel(pathA); FileChannel channelB = (FileChannel) Files.newByteChannel(pathB)) {
+                if (isNotEqual(channelA, channelB, 0, bufferSize)) { // start
+                    logger.infoStat("diff start", pathA, "<>", pathB);
+                    return false;
+                } else if (isNotEqual(channelA, channelB, fileSize - bufferSize, fileSize)) { // end
+                    logger.infoStat("diff end", pathA, "<>", pathB);
+                    return false;
+                } else if (isNotEqual(channelA, channelB, fileSize / 2 - bufferSize, fileSize / 2 + bufferSize)) { // middle
+                    logger.infoStat("diff middle", pathA, "<>", pathB);
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    private boolean isNotEqual(FileChannel channelA, FileChannel channelB, long start, long end) throws IOException {
+        MappedByteBuffer byteBufferA = channelA.map(FileChannel.MapMode.READ_ONLY, start, end - start);
+        MappedByteBuffer byteBufferB = channelB.map(FileChannel.MapMode.READ_ONLY, start, end - start);
+        return !byteBufferA.equals(byteBufferB);
+    }
+
+    public boolean byteByByte(Path pathA, Path pathB, byte[] bufferA, byte[] bufferB) throws IOException {
+        if (areExplicitlyDifferent(pathA, pathB)) {
+            return false;
+        } else {
+            return byteByByteWithProvidedBuffers(pathA, pathB, bufferA, bufferB);
+        }
+    }
+
+    public boolean byteByByte(Path pathA, Path pathB) throws IOException {
+        if (areExplicitlyDifferent(pathA, pathB)) {
+            return false;
+        } else {
+            return byteByByteWithProvidedBuffers(pathA, pathB, internalBufferA, internalBufferB);
+        }
+    }
+
+    private boolean byteByByteWithProvidedBuffers(Path pathA, Path pathB, byte[] bufferA, byte[] bufferB) throws IOException {
+        if (bufferA.length != bufferB.length) {
+            throw new IllegalArgumentException("Buffers have different sizes: " + bufferA.length + " and " + bufferB.length);
+        } else if (bufferA == bufferB) {
+            throw new IllegalArgumentException("Buffers reference the same array");
+        } else {
             int bytesReadA = 0;
             int bytesReadB;
 
@@ -52,10 +115,8 @@ public class FileCompare {
                     if (bytesReadA != bytesReadB) {
                         return false;
                     } else {
-                        for (i = 0; i < bytesReadA; i++) {
-                            if (bufferA[i] != bufferB[i]) {
-                                return false;
-                            }
+                        if (bytesReadA != -1 && !Arrays.equals(bufferA, 0, bytesReadA, bufferB, 0, bytesReadA)) {
+                            return false;
                         }
                     }
                 }
@@ -85,7 +146,7 @@ public class FileCompare {
         }
     }
 
-    private MappedByteBuffer toBuffer(FileChannel channel, long position, long size, int bufferSize) throws IOException {
+    private MappedByteBuffer toBuffer(FileChannel channel, long position, long size, long bufferSize) throws IOException {
         long end = Math.min(size, position + bufferSize);
         long length = end - position;
         return channel.map(FileChannel.MapMode.READ_ONLY, position, length);
@@ -105,5 +166,9 @@ public class FileCompare {
 
     private boolean areExplicitlyDifferent(Path pathA, Path pathB) throws IOException {
         return !Files.exists(pathA) || !Files.exists(pathB) || Files.size(pathA) != Files.size(pathB);
+    }
+
+    public int getInternalBufferSize() {
+        return internalBufferA.length;
     }
 }

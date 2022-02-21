@@ -7,6 +7,9 @@ import javax.inject.Singleton;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
 
@@ -20,16 +23,24 @@ public class IoService {
     private NameResolver nameResolver;
 
     @Inject
+    private FileCompare fileCompare;
+
+    @Inject
     private Io io;
 
-    @Option(value = "d", alternative = "delete")
+    @Option(alternative = "delete")
     private boolean delete = false;
 
-    @Option(value = "m", alternative = "move")
+    @Option(alternative = "move")
     private boolean move = false;
 
-    @Option(value = "c", alternative = "copy")
+    @Option(alternative = "copy")
     private boolean copy = false;
+
+    @Option(alternative = "fast")
+    private boolean fast = false;
+
+    private Set<String> ignoredFiles = Set.of(".picasa.ini", "Picasa.ini", "desktop.ini", "Thumbs.db", "ZbThumbnail.info");
 
     public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
         Path result = ofNullable(nameResolver.resolve(source)).map(r -> r.resolve(targetRoot)).orElse(null);
@@ -38,7 +49,11 @@ public class IoService {
     }
 
     public boolean haveSameContent(Path source, Path target) throws IOException {
-        return io.haveSameContent(source, target);
+        if (fast) {
+            return fileCompare.fast(source, target);
+        } else {
+            return fileCompare.byteByByte(source, target);
+        }
     }
 
     public void delete(Path path) throws IOException {
@@ -136,8 +151,8 @@ public class IoService {
     public void deleteEmpty(Path root, Path orgPath) throws IOException {
         Path path = orgPath.normalize().toAbsolutePath();
         while (Files.exists(path) && Files.isDirectory(path) && path.startsWith(root) && !path.equals(root)) {
-            long count = Files.list(path).count();
-            if (count == 0) {
+            List<Path> files = Files.list(path).collect(Collectors.toList());
+            if (deleteIgnoredFiles(files)) {
                 logger.infoStat("delete empty", path);
 
                 if (delete) {
@@ -145,10 +160,30 @@ public class IoService {
                 }
                 path = path.getParent().toAbsolutePath();
             } else {
-                logger.infoStat("not empty", path, ":", count, "elements");
+                logger.infoStat("not empty", path, ":", files.size(), "elements");
                 break;
             }
         }
+    }
+
+    private boolean deleteIgnoredFiles(List<Path> files) throws IOException {
+        if (files.isEmpty()) {
+            return true;
+        } else if (files.size() == 1 && isIgnoredFile(files.get(0))) {
+            logger.infoStat("delete ignored", files.get(0));
+
+            if (delete) {
+                io.delete(files.get(0));
+                return true;
+            } else {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private boolean isIgnoredFile(Path path) throws IOException {
+        return Files.isRegularFile(path) && (Files.size(path) == 0 || ignoredFiles.contains(path.getFileName().toString()));
     }
 
     public long size(Path path) {
@@ -192,5 +227,13 @@ public class IoService {
 
     public void setCopy(boolean copy) {
         this.copy = copy;
+    }
+
+    public boolean isFast() {
+        return fast;
+    }
+
+    public void setFast(boolean fast) {
+        this.fast = fast;
     }
 }

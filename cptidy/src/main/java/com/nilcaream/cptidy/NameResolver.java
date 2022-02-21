@@ -16,7 +16,7 @@ public class NameResolver {
 
     // 1 - prefix, 2 - yyyyMMdd, 3 - yyyy, 4 - MM, 5 - dd, 6 - suffix
     private static final Pattern NAME_EXTENSION = Pattern.compile("(.*)((20[0123][0-9])([01][0-9])([0123][0-9]))([^0-9].+)");
-    private static final Set<String> EXTENSIONS = Set.of(".jpg", ".jpeg", ".mp4", ".mpeg", ".avi", ".mov", ".mts");
+    private static final Set<String> EXTENSIONS = Set.of(".jpg", ".jpeg", ".mp4", ".mpeg", ".avi", ".mov", ".mts", ".gif");
 
     @Inject
     private Logger logger;

@@ -29,6 +29,9 @@ class IoServiceTest {
     @Mock
     private NameResolver nameResolver;
 
+    @Mock
+    private FileCompare fileCompare;
+
     @Spy
     private Io io = new Io();
 
@@ -48,11 +51,26 @@ class IoServiceTest {
     @Test
     void shouldHaveSameContent() throws IOException {
         // given
-        root = Files.createTempDirectory("cptidy-");
         Path source = io.write(root.resolve("file1.txt"), "test");
         Path target = io.write(root.resolve("file2.txt"), "test");
-        given(io.haveSameContent(source, target)).willReturn(true);
-        given(io.haveSameContent(target, source)).willReturn(false);
+        given(fileCompare.byteByByte(source, target)).willReturn(true);
+        given(fileCompare.byteByByte(target, source)).willReturn(false);
+
+        // then
+        assertThat(underTest.haveSameContent(source, target)).isTrue();
+        assertThat(underTest.haveSameContent(target, source)).isFalse();
+    }
+
+    @Test
+    void shouldHaveSameContentFast() throws IOException {
+        // given
+        Path source = io.write(root.resolve("file1.txt"), "test");
+        Path target = io.write(root.resolve("file2.txt"), "test");
+        given(fileCompare.fast(source, target)).willReturn(true);
+        given(fileCompare.fast(target, source)).willReturn(false);
+
+        // when
+        underTest.setFast(true);
 
         // then
         assertThat(underTest.haveSameContent(source, target)).isTrue();
@@ -316,6 +334,60 @@ class IoServiceTest {
         assertThat(root.resolve("test").resolve("second").resolve("other")).doesNotExist();
         assertThat(root.resolve("test").resolve("second")).doesNotExist();
         assertThat(root.resolve("test")).exists();
+        assertThat(root).exists();
+    }
+
+    @Test
+    void shouldDeleteEmptyDirectoriesWithIgnoredFiles1() throws IOException {
+        // given
+        Files.createDirectories(root.resolve("test").resolve("second").resolve("other"));
+        io.write(root.resolve("test").resolve("empty.jpg"), "");
+        underTest.setDelete(true);
+
+        // when
+        underTest.deleteEmpty(root, root.resolve("test").resolve("second").resolve("other"));
+
+        // then
+        assertThat(root.resolve("test").resolve("second").resolve("other")).doesNotExist();
+        assertThat(root.resolve("test").resolve("second")).doesNotExist();
+        assertThat(root.resolve("test")).doesNotExist();
+        assertThat(root).exists();
+    }
+
+    @Test
+    void shouldDeleteEmptyDirectoriesWithIgnoredFiles2() throws IOException {
+        // given
+        Files.createDirectories(root.resolve("test").resolve("second").resolve("other"));
+        io.write(root.resolve("test").resolve(".picasa.ini"), "not empty but ignored");
+        underTest.setDelete(true);
+
+        // when
+        underTest.deleteEmpty(root, root.resolve("test").resolve("second").resolve("other"));
+
+        // then
+        assertThat(root.resolve("test").resolve("second").resolve("other")).doesNotExist();
+        assertThat(root.resolve("test").resolve("second")).doesNotExist();
+        assertThat(root.resolve("test")).doesNotExist();
+        assertThat(root).exists();
+    }
+
+    @Test
+    void shouldNotDeleteEmptyDirectoriesWithTwoIgnoredFiles() throws IOException {
+        // given
+        Files.createDirectories(root.resolve("test").resolve("second").resolve("other"));
+        io.write(root.resolve("test").resolve(".picasa.ini"), "not empty but ignored");
+        io.write(root.resolve("test").resolve("empty.txt"), "");
+        underTest.setDelete(true);
+
+        // when
+        underTest.deleteEmpty(root, root.resolve("test").resolve("second").resolve("other"));
+
+        // then
+        assertThat(root.resolve("test").resolve("second").resolve("other")).doesNotExist();
+        assertThat(root.resolve("test").resolve("second")).doesNotExist();
+        assertThat(root.resolve("test")).exists();
+        assertThat(root.resolve("test").resolve(".picasa.ini")).exists();
+        assertThat(root.resolve("test").resolve("empty.txt")).exists();
         assertThat(root).exists();
     }
 

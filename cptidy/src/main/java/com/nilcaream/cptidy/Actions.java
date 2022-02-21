@@ -24,6 +24,9 @@ public class Actions {
     @Inject
     private Marker marker;
 
+    @Inject
+    private IoTest ioTest;
+
     public Statistics organize(String id, Path sourceRoot, Path targetRoot) {
         logger.info(id, sourceRoot, ">", targetRoot);
         logger.resetStatistics(id);
@@ -118,15 +121,18 @@ public class Actions {
         logger.resetStatistics(id);
         marker.reset();
 
-        try (Stream<Path> walk = Files.walk(targetRoot)) {
-            walk.filter(Files::isDirectory).forEach(directory -> {
-                try {
-                    marker.mark(directory);
-                    ioService.deleteEmpty(targetRoot, directory);
-                } catch (IOException e) {
-                    logger.error("error", e, "Directory processing error");
-                }
-            });
+        try {
+            Files.walk(targetRoot).filter(Files::isDirectory)
+                    .peek(d -> marker.mark(d))
+                    .collect(Collectors.toList())
+                    .forEach(directory -> {
+                        try {
+                            marker.mark(directory);
+                            ioService.deleteEmpty(targetRoot, directory);
+                        } catch (IOException e) {
+                            logger.error("error", e, "Directory processing error");
+                        }
+                    });
         } catch (IOException e) {
             logger.error("error", e, "Directory processing error");
         }
@@ -146,7 +152,7 @@ public class Actions {
                 try {
                     marker.mark(source);
                     Path target = ioService.buildCopyTarget(source, sourceRoot, targetRoot);
-                    if (ioService.haveSameContent(source, target)) {
+                    if (!ioService.isSameFile(source, target) && ioService.haveSameContent(source, target)) {
                         // file is already in present in target location
                         logger.infoStat("ok location", source);
                     } else {
@@ -273,5 +279,9 @@ public class Actions {
         logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
         return logger.getStatistics();
+    }
+
+    public void test(Path root) throws IOException {
+        ioTest.test2(root, 128 * 1024 * 1024, 16 * 1024 * 1024);
     }
 }

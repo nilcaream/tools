@@ -22,9 +22,6 @@ import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 @Singleton
 public class Io {
 
-    // this is more of an internal module than a dependency
-    private final FileCompare fileCompare = new FileCompare();
-
     public String read(Path path) throws IOException {
         return Files.readString(path);
     }
@@ -33,10 +30,6 @@ public class Io {
         createParentDirectories(path);
         Files.write(path, content.getBytes(), CREATE, TRUNCATE_EXISTING);
         return path;
-    }
-
-    public boolean haveSameContent(Path pathA, Path pathB) throws IOException {
-        return fileCompare.byByteChannel(pathA, pathB, 16 * 1024 * 1024);
     }
 
     public void copy(Path source, Path target) throws IOException {
