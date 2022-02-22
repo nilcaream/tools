@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -124,23 +125,23 @@ class IoServiceTest {
     }
 
     @Test
-    void shouldDeleteLongerWhenItStartsAsShorter() throws IOException {
+    void shouldNotDeleteShorterIfLongerIsHasCopySuffix() throws IOException {
         // given
         underTest.setDelete(true);
         Path longer1 = io.write(root.resolve("333x.txt"), "test");
-        Path shorter1 = io.write(root.resolve("333.txt"), "test");
+        Path shorter1 = io.write(root.resolve("333-1.txt"), "test");
         Path longer2 = io.write(root.resolve("333x.dat"), "test");
-        Path shorter2 = io.write(root.resolve("333.dat"), "test");
+        Path shorter2 = io.write(root.resolve("333-1.dat"), "test");
 
         // when
         underTest.deleteOne(longer1, shorter1);
         underTest.deleteOne(shorter2, longer2);
 
         // then
-        assertThat(longer1).doesNotExist();
-        assertThat(longer2).doesNotExist();
-        assertThat(shorter1).exists();
-        assertThat(shorter2).exists();
+        assertThat(longer1).exists();
+        assertThat(longer2).exists();
+        assertThat(shorter1).doesNotExist();
+        assertThat(shorter2).doesNotExist();
     }
 
     @Test
@@ -165,23 +166,23 @@ class IoServiceTest {
 
 
     @Test
-    void shouldDeleteByCompare() throws IOException {
+    void shouldDeleteEarlierByCompare() throws IOException {
         // given
         underTest.setDelete(true);
-        Path file1 = io.write(root.resolve("file2.txt"), "test");
         Path earlier1 = io.write(root.resolve("file1.txt"), "test");
-        Path file2 = io.write(root.resolve("file2.txt22"), "test");
+        Path later1 = io.write(root.resolve("file2.txt"), "test");
         Path earlier2 = io.write(root.resolve("file1.txt22"), "test");
+        Path later2 = io.write(root.resolve("file2.txt22"), "test");
 
         // when
-        underTest.deleteOne(file1, earlier1);
-        underTest.deleteOne(earlier2, file2);
+        underTest.deleteOne(later1, earlier1);
+        underTest.deleteOne(earlier2, later2);
 
         // then
-        assertThat(earlier1).exists();
-        assertThat(earlier2).exists();
-        assertThat(file1).doesNotExist();
-        assertThat(file2).doesNotExist();
+        assertThat(earlier1).doesNotExist();
+        assertThat(earlier2).doesNotExist();
+        assertThat(later1).exists();
+        assertThat(later2).exists();
     }
 
     @Test
@@ -482,5 +483,108 @@ class IoServiceTest {
         assertThat(underTest.isCopy()).isFalse();
         assertThat(underTest.isMove()).isFalse();
         assertThat(underTest.isDelete()).isTrue();
+    }
+
+    @Test
+    void shouldDeleteBestMatchPath1() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("test-file"), "testX");
+        Path path2 = io.write(root.resolve("tes").resolve("test-file-1-2.jpg"), "testX");
+        Path path3 = io.write(root.resolve("test").resolve("test-file-0.jpg"), "testX");
+        underTest.setDelete(true);
+
+        // when
+        underTest.retainOne(List.of(path1, path2, path3));
+
+        // then
+        assertThat(path1).exists();
+        assertThat(path2).doesNotExist();
+        assertThat(path3).doesNotExist();
+    }
+
+    @Test
+    void shouldDeleteBestMatchPath2() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("200-test-file.jpg"), "testX");
+        Path path2 = io.write(root.resolve("tes").resolve("200-test-file-0.jp"), "testX");
+        Path path3 = io.write(root.resolve("test").resolve("111-test-file.j"), "testX");
+        underTest.setDelete(true);
+
+        // when
+        underTest.retainOne(List.of(path3, path1, path2));
+
+        // then
+        assertThat(path1).exists();
+        assertThat(path2).doesNotExist();
+        assertThat(path3).doesNotExist();
+    }
+
+    @Test
+    void shouldDeleteBestMatchPath3() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("test-file-jpg"), "testX");
+        Path path2 = io.write(root.resolve("tes").resolve("test-file-jp"), "testX");
+        Path path3 = io.write(root.resolve("test").resolve("test-file-j"), "testX");
+        Path path4 = io.write(root.resolve("test").resolve("test-file-zzz"), "testX");
+        underTest.setDelete(true);
+
+        // when
+        underTest.retainOne(List.of(path3, path1, path4, path2));
+
+        // then
+        assertThat(path1).doesNotExist();
+        assertThat(path2).doesNotExist();
+        assertThat(path3).doesNotExist();
+        assertThat(path4).exists();
+    }
+
+    @Test
+    void shouldNotDeleteBestMatchPath() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");
+        Path path2 = io.write(root.resolve("tes").resolve("test-file.jp"), "testX");
+        Path path3 = io.write(root.resolve("test").resolve("test-file.j"), "testX");
+        Path path4 = io.write(root.resolve("test").resolve("test-file.zzz"), "testX");
+
+        // when
+        underTest.retainOne(List.of(path3, path1, path4, path2));
+
+        // then
+        assertThat(path1).exists();
+        assertThat(path2).exists();
+        assertThat(path3).exists();
+        assertThat(path4).exists();
+    }
+
+    @Test
+    void shouldFailOnRetainSinglePath() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");
+        underTest.setDelete(true);
+
+        // when
+        assertThatThrownBy(() -> underTest.retainOne(List.of(path1))).hasMessageContaining("Should provide more than 1 path");
+    }
+
+    @Test
+    void shouldFailOnRetainNonDistinctPaths() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");
+        Path path2 = root.resolve("te").resolve("test-file.jpg");
+        underTest.setDelete(true);
+
+        // when
+        assertThatThrownBy(() -> underTest.retainOne(List.of(path1, path2))).hasMessageContaining("Should provide more than 1 path");
+    }
+
+    @Test
+    void shouldFailOnDeleteNonDistinctPaths() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");
+        Path path2 = root.resolve("te").resolve("test-file.jpg");
+        underTest.setDelete(true);
+
+        // when
+        assertThatThrownBy(() -> underTest.deleteOne(path1, path2)).hasMessageContaining("Should provide different paths");
     }
 }

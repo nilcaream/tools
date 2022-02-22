@@ -8,7 +8,10 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -89,16 +92,17 @@ public class Actions {
                             .filter(e -> e.getValue().size() > 1)
                             .map(Map.Entry::getValue)
                             .forEach(paths -> {
-                                Collections.sort(paths);
                                 for (Path file : paths) {
                                     for (Path copy : paths) {
-                                        try {
-                                            if (!ioService.isSameFile(file, copy) && ioService.haveSameContent(file, copy)) {
-                                                logger.infoStat("duplicate", file, "=", copy);
-                                                ioService.deleteOne(file, copy);
+                                        if (file != copy) {
+                                            try {
+                                                if (!ioService.isSameFile(file, copy) && ioService.haveSameContent(file, copy)) {
+                                                    logger.infoStat("duplicate", file, "=", copy);
+                                                    ioService.deleteOne(file, copy);
+                                                }
+                                            } catch (IOException e) {
+                                                logger.error("error", e, file, ":", copy);
                                             }
-                                        } catch (IOException e) {
-                                            logger.error("error", e, file, ":", copy);
                                         }
                                     }
                                 }
@@ -151,12 +155,21 @@ public class Actions {
             walk.filter(Files::isRegularFile).forEach(source -> {
                 try {
                     marker.mark(source);
+                    logger.stat("total", source);
+
                     Path target = ioService.buildCopyTarget(source, sourceRoot, targetRoot);
-                    if (!ioService.isSameFile(source, target) && ioService.haveSameContent(source, target)) {
-                        // file is already in present in target location
-                        logger.infoStat("ok location", source);
+                    if (ioService.isSameFile(source, target)) {
+                        // source file is exactly the same file as target
+                        logger.error("same file", source);
+                    } else if (ioService.haveSameAttributes(source, target)) {
+                        // same parent name, file name, size and create date time
+                        logger.stat("same attributes", source);
+                    } else if (ioService.haveSameContent(source, target)) {
+                        // same content
+                        logger.infoStat("same content", source, "=", target);
+                        ioService.fixTimestamps(source, target);
                     } else {
-                        // file does not exist in target location
+                        // does not exist in target location or target is a different file
                         ioService.copy(source, target);
                     }
                 } catch (IOException e) {
@@ -283,5 +296,49 @@ public class Actions {
 
     public void test(Path root) throws IOException {
         ioTest.test2(root, 128 * 1024 * 1024, 16 * 1024 * 1024);
+    }
+
+    // TODO implement
+    private Statistics findSelfCopies(String id, Path source) {
+        logger.info(id, source);
+        logger.resetStatistics(id);
+        marker.reset();
+
+        Map<Long, List<Path>> sizeToPaths = new HashMap<>();
+
+        logger.info("source-1", source);
+        try (Stream<Path> walk = Files.walk(source)) {
+            walk.filter(Files::isDirectory).forEach(directory -> {
+                try {
+                    marker.mark(directory);
+                    int[] count = new int[]{0};
+                    Files.list(directory)
+                            .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
+                            .forEach(path -> {
+                                count[0]++;
+                                marker.mark(path);
+                                long size = ioService.size(path);
+                                if (size > 1024) {
+                                    List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
+                                    paths.add(path);
+                                }
+                            });
+                    logger.info("directory", directory, ":", count[0], "files");
+                } catch (IOException e) {
+                    logger.error("error", e, "File processing error");
+                }
+            });
+        } catch (IOException e) {
+            logger.error("error", e, "Directory processing error");
+        }
+
+        logger.info("source-2", source);
+        sizeToPaths.values().stream().filter(v -> v.size() > 1).forEach(paths -> {
+            // TODO implement
+        });
+
+        logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
+        logger.label("");
+        return logger.getStatistics();
     }
 }

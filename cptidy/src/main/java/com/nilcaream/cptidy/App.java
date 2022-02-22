@@ -6,7 +6,9 @@ import com.nilcaream.utilargs.UtilArgs;
 
 import javax.inject.Inject;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -147,7 +149,11 @@ public class App {
     }
 
     private Path asPath(String text) {
-        return Paths.get(text).normalize().toAbsolutePath();
+        try {
+            return Paths.get(text).toRealPath(LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private void execute() throws IOException {
@@ -180,12 +186,28 @@ public class App {
                             statistics.add(actions.removeEmpty("no-empty", source));
                         });
                     }
-                } else if (removeDuplicates) {
+                } else if (removeDuplicates && hasTarget()) {
                     require(true, true);
 
-                    if (removeDuplicates) {
+                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                        statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory)));
+                    });
+
+                    if (removeEmpty) {
                         sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                            statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory)));
+                            statistics.add(actions.removeEmpty("no-empty", source));
+                        });
+                    }
+                } else if (removeDuplicates) { // only source
+                    require(true, false);
+
+                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                        statistics.add(actions.removeDuplicates("no-self-copies", source));
+                    });
+
+                    if (removeEmpty) {
+                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                            statistics.add(actions.removeEmpty("no-empty", source));
                         });
                     }
                 } else if (reorganize) {
@@ -194,6 +216,12 @@ public class App {
                     sourceDirectories.stream().map(this::asPath).forEach(source -> {
                         statistics.add(actions.organize("reorganize", source, source));
                     });
+
+                    if (removeEmpty) {
+                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
+                            statistics.add(actions.removeEmpty("no-empty", source));
+                        });
+                    }
                 } else if (removeEmpty) {
                     requireAny();
 
@@ -208,10 +236,7 @@ public class App {
                 } else if (synchronize) {
                     require(true, true);
 
-                    Path source = asPath(sourceDirectories.get(0));
-                    Path target = asPath(targetDirectory);
-                    statistics.add(actions.synchronize("synchronize-1", source, target));
-                    statistics.add(actions.synchronize("synchronize-2", target, source));
+                    statistics.add(actions.synchronize("synchronize", asPath(sourceDirectories.get(0)), asPath(targetDirectory)));
                 } else {
                     fail();
                 }

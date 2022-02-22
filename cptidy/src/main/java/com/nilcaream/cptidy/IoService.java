@@ -7,10 +7,15 @@ import javax.inject.Singleton;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Set;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static java.lang.String.format;
 import static java.util.Optional.ofNullable;
 
 @Singleton
@@ -56,6 +61,44 @@ public class IoService {
         }
     }
 
+    public boolean haveSameAttributes(Path source, Path target) throws IOException {
+        if (Files.exists(source) && Files.exists(target)) {
+            return getAttributes(source).equals(getAttributes(target));
+        } else {
+            return false;
+        }
+    }
+
+    public void fixTimestamps(Path source, Path target) throws IOException {
+        FileTime sourceFileTime = Files.readAttributes(source, BasicFileAttributes.class).creationTime();
+        FileTime targetFileTime = Files.readAttributes(target, BasicFileAttributes.class).creationTime();
+
+        long sourceTime = sourceFileTime.toMillis();
+        long targetTime = targetFileTime.toMillis();
+
+        if (sourceTime > targetTime) {
+            logger.debugStat("time-fix", source, ":", targetFileTime.toString());
+            copyAttributes(target, source);
+        } else if (sourceTime < targetTime) {
+            logger.debugStat("time-fix", target, ":", sourceFileTime.toString());
+            copyAttributes(source, target);
+        }
+    }
+
+    private void copyAttributes(Path source, Path target) throws IOException {
+        if (copy) {
+            BasicFileAttributes from = Files.readAttributes(source, BasicFileAttributes.class);
+            BasicFileAttributeView to = Files.getFileAttributeView(target, BasicFileAttributeView.class);
+            to.setTimes(from.lastModifiedTime(), from.lastAccessTime(), from.creationTime());
+        }
+    }
+
+    private String getAttributes(Path path) throws IOException {
+        BasicFileAttributes attr = Files.readAttributes(path, BasicFileAttributes.class);
+        String creation = attr.creationTime().toString();
+        return format("%s/%s %d %s", path.getParent().getFileName().toString(), path.getFileName().toString(), Files.size(path), creation);
+    }
+
     public void delete(Path path) throws IOException {
         logger.infoStat("delete", path);
 
@@ -64,8 +107,20 @@ public class IoService {
         }
     }
 
+    private void assertExists(Path path) {
+        if (!Files.exists(path)) {
+            throw new IllegalStateException(path + " does not exists for deletion");
+        }
+    }
+
     public void deleteOne(Path fileA, Path fileB) throws IOException {
-        Path path = selectOne(fileA, fileB);
+        assertExists(fileA);
+        assertExists(fileB);
+        if (io.isSameFile(fileA, fileB)) {
+            throw new IllegalArgumentException("Should provide different paths");
+        }
+
+        Path path = selectToDelete(fileA, fileB);
         logger.infoStat("delete", path);
 
         if (delete) {
@@ -73,28 +128,75 @@ public class IoService {
         }
     }
 
-    private Path selectOne(Path fileA, Path fileB) {
-        Path result;
-        String nameA = fileA.getFileName().toString();
-        String nameB = fileB.getFileName().toString();
+    public void retainOne(Collection<Path> paths) throws IOException {
+        if (paths.stream().distinct().count() < 2) {
+            throw new IllegalArgumentException("Should provide more than 1 path");
+        }
+        paths.forEach(this::assertExists);
 
-        if (nameA.length() == nameB.length()) {
-            if (nameA.compareTo(nameB) > 0) {
-                result = fileA;
-            } else {
-                result = fileB;
+        Map<Path, Integer> pathToScore = paths.stream().collect(Collectors.toMap(p -> p, p -> 0));
+
+        for (Path pathA : paths) {
+            for (Path pathB : paths) {
+                if (!pathA.equals(pathB)) {
+                    if (selectToDelete(pathA, pathB).equals(pathA)) {
+                        pathToScore.put(pathA, pathToScore.get(pathA) + 1);
+                    } else {
+                        pathToScore.put(pathB, pathToScore.get(pathB) + 1);
+                    }
+                }
             }
+        }
+
+        Path best = pathToScore.entrySet().stream()
+                .min(Comparator.comparingInt(Map.Entry::getValue))
+                .map(Map.Entry::getKey)
+                .orElseThrow();
+
+        for (Path path : paths) {
+            if (path == best) {
+                logger.infoStat("retain", path, ": score", pathToScore.get(path));
+            } else {
+                logger.infoStat("delete", path, ": score", pathToScore.get(path));
+
+                if (delete) {
+                    io.delete(path);
+                }
+            }
+        }
+    }
+
+    private final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9])*");
+
+    private String removeCopySuffix(String text) {
+        Matcher matcher = COPY_SUFFIX.matcher(text);
+        if (matcher.matches()) {
+            return matcher.group(1);
         } else {
-            Path shorter = nameA.length() < nameB.length() ? fileA : fileB;
-            Path longer = shorter == fileA ? fileB : fileA;
-            String shorterName = getName(shorter == fileA ? nameA : nameB);
-            String longerName = getName(longer == fileA ? nameA : nameB);
+            return text;
+        }
+    }
 
-            if (longerName.startsWith(shorterName)) {
-                result = longer;
-            } else {
-                result = shorter;
-            }
+    private Path selectToDelete(Path fileA, Path fileB) {
+        Path result;
+
+        String orgNameA = getName(fileA.getFileName().toString());
+        String orgNameB = getName(fileB.getFileName().toString());
+        String nameA = removeCopySuffix(orgNameA);
+        String nameB = removeCopySuffix(orgNameB);
+
+        if (nameA.length() > nameB.length()) {
+            result = fileB; // after shortening B is shorter
+        } else if (nameA.length() < nameB.length()) {
+            result = fileA; // after shortening A is shorter
+        } else if (orgNameA.length() > orgNameB.length()) { // same short length; select A as it had only copy suffixes
+            result = fileA;
+        } else if (orgNameA.length() < orgNameB.length()) { // same short length; select B as it had only copy suffixes
+            result = fileB;
+        } else if (nameA.compareTo(nameB) < 0) { // same length before and after shortening so select e.g. 20101231 instead of 20101200
+            result = fileA;
+        } else {
+            result = fileB;
         }
 
         return result;
@@ -140,7 +242,12 @@ public class IoService {
         }
 
         Path target = nameResolver.buildUniquePath(orgTarget);
-        logger.infoStat("copy", source, ">", target);
+
+        if (target.equals(orgTarget)) {
+            logger.infoStat("copy", source, ">", target);
+        } else {
+            logger.infoStat("copy new", source, ">", target);
+        }
 
         if (copy) {
             io.copy(source, target);

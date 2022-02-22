@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -34,7 +35,7 @@ public class Io {
 
     public void copy(Path source, Path target) throws IOException {
         createParentDirectories(target);
-        Files.copy(source, target);
+        Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
     }
 
     public void move(Path source, Path target) throws IOException {

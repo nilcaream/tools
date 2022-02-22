@@ -11,6 +11,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
@@ -53,6 +55,47 @@ class NameResolverTest {
         // then
         assertThat(underTest.resolve(matchNameMatchExtension)).isEqualTo(new NameResolver.Result("2020-01", "20200115-test.jpg"));
         assertThat(underTest.resolve(matchNameNotExtension)).isNull();
+    }
+
+    @Test
+    void shouldResolveByDateFromParent() throws IOException {
+        // given
+        Path matchNameMatchExtension = io.write(root.resolve("2012-02").resolve("some name.jPG"), "test");
+        Path matchNameMatchExtensionWithParent = io.write(root.resolve("2012-02").resolve("some 2012-02 name.jPG"), "test");
+        Path matchNameNotExtension = io.write(root.resolve("2012-02").resolve("other.jpg.txt"), "test");
+        Path matchNameNotParent = io.write(root.resolve("2012-02-02").resolve("next.jpg"), "test");
+
+        // then
+        assertThat(underTest.resolve(matchNameMatchExtension)).isEqualTo(new NameResolver.Result("2012-02", "20120200-some-name.jpg"));
+        assertThat(underTest.resolve(matchNameMatchExtensionWithParent)).isEqualTo(new NameResolver.Result("2012-02", "20120200-some-name.jpg"));
+        assertThat(underTest.resolve(matchNameNotExtension)).isNull();
+        assertThat(underTest.resolve(matchNameNotParent)).isNull();
+    }
+
+    @Test
+    void shouldResolveByDateCreateTimeShort() throws IOException {
+        // given
+        Date now = new Date();
+        String parent = new SimpleDateFormat("yyyy-MM").format(now);
+        String date = new SimpleDateFormat("yyyy-MM").format(now);
+        String prefix = new SimpleDateFormat("yyyyMMdd").format(now);
+        Path match = io.write(root.resolve("some name" + date + ".jPG"), "test");
+
+        // then
+        assertThat(underTest.resolve(match)).isEqualTo(new NameResolver.Result(parent, prefix + "-some-name.jpg"));
+    }
+
+    @Test
+    void shouldResolveByDateCreateTimeLong() throws IOException {
+        // given
+        Date now = new Date();
+        String parent = new SimpleDateFormat("yyyy-MM").format(now);
+        String date = new SimpleDateFormat("yyyy-MM-dd").format(now);
+        String prefix = new SimpleDateFormat("yyyyMMdd").format(now);
+        Path match = io.write(root.resolve("some name" + date + ".jPG"), "test");
+
+        // then
+        assertThat(underTest.resolve(match)).isEqualTo(new NameResolver.Result(parent, prefix + "-some-name.jpg"));
     }
 
     @Test

@@ -17,6 +17,7 @@ public class NameResolver {
     // 1 - prefix, 2 - yyyyMMdd, 3 - yyyy, 4 - MM, 5 - dd, 6 - suffix
     private static final Pattern NAME_EXTENSION = Pattern.compile("(.*)((20[0123][0-9])([01][0-9])([0123][0-9]))([^0-9].+)");
     private static final Set<String> EXTENSIONS = Set.of(".jpg", ".jpeg", ".mp4", ".mpeg", ".avi", ".mov", ".mts", ".gif");
+    private static final Pattern DIRECTORY_DATE = Pattern.compile("20[0123][0-9]-[01][0-9]");
 
     @Inject
     private Logger logger;
@@ -59,14 +60,22 @@ public class NameResolver {
             if (date != null) {
                 result = new Result(date.asShort(), exifDate(status, nameExtension, date.asLong()));
             } else if (input.getFileName().toString().contains(fileDateTime)) {
-                date = new DateString(attr.creationTime().toString().substring(0, 10));
-                result = new Result(date.asShort(), fileDate(status, nameExtension, date.asLong()));
+                String longDate = attr.creationTime().toString().substring(0, 10);
+                date = new DateString(longDate);
+                result = new Result(date.asShort(), fileDate(status, nameExtension.replace(longDate, "-").replace(fileDateTime, "-"), date.asLong()));
+            } else if (DIRECTORY_DATE.matcher(input.getParent().getFileName().toString()).matches()) {
+                String parent = input.getParent().getFileName().toString();
+                date = new DateString(parent + "-00");
+                result = new Result(date.asShort(), parentDate(status, nameExtension.replace(parent, "-"), date.asLong()));
             }
         }
 
-        if (result == null) {
+        if (result == null && EXTENSIONS.contains(extension)) {
             // if result is not determined then actual status does not matter
             logger.infoStat(Status.NO_MATCH.name(), input);
+        } else if (result == null) {
+            // unknown extension
+            logger.infoStat(Status.UNKNOWN.name(), input);
         } else if (result.file.equals(inputNameExtension)) {
             logger.debugStat(Status.NO_NAME_CHANGE.name(), input);
         } else {
@@ -106,6 +115,15 @@ public class NameResolver {
         String result = prepareOnly(nameExtension);
         if (!result.equals(nameExtension)) {
             statusHolder.set(Status.NEW_NAME);
+        }
+        return result;
+    }
+
+    private String parentDate(StatusHolder statusHolder, String nameExtension, String date) {
+        String result = overrideDate(statusHolder, nameExtension, date);
+
+        if (!result.equals(nameExtension)) {
+            statusHolder.set(Status.PARENT_DATE);
         }
         return result;
     }
@@ -189,6 +207,8 @@ public class NameResolver {
         OVERRIDE_DATE,
         EXIF_DATE,
         FILE_DATE,
+        PARENT_DATE,
+        UNKNOWN,
         NO_NAME_CHANGE
     }
 

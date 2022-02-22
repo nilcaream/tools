@@ -99,7 +99,7 @@ public class Logger {
     }
 
     private String formatStatus(String status) {
-        String upper = status.toUpperCase().trim().replaceAll("[^A-Z]+", "-");
+        String upper = status.toUpperCase().trim().replaceAll("[^A-Z0-9]+", "-");
         return (upper + "                                ").substring(0, 16);
     }
 

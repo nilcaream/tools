@@ -143,7 +143,6 @@ class ActionsTest {
         given(ioService.size(duplicate2)).willReturn(1025L);
         given(ioService.size(notDuplicated)).willReturn(1025L);
 
-        given(ioService.isSameFile(notDuplicated, notDuplicated)).willReturn(true);
         given(ioService.isSameFile(duplicate1, notDuplicated)).willReturn(false);
         given(ioService.isSameFile(duplicate2, notDuplicated)).willReturn(false);
         given(ioService.isSameFile(notDuplicated, duplicate1)).willReturn(false);
@@ -154,8 +153,6 @@ class ActionsTest {
         given(ioService.haveSameContent(duplicate1, notDuplicated)).willReturn(false);
         given(ioService.haveSameContent(duplicate2, notDuplicated)).willReturn(false);
 
-        given(ioService.isSameFile(duplicate1, duplicate1)).willReturn(true);
-        given(ioService.isSameFile(duplicate2, duplicate2)).willReturn(true);
         given(ioService.isSameFile(duplicate1, duplicate2)).willReturn(false);
         given(ioService.isSameFile(duplicate2, duplicate1)).willReturn(false);
 

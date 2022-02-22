@@ -48,7 +48,10 @@ public class Statistics {
 
         @Override
         public String toString() {
-            return String.format("%d entries, %.3f MB", count, bytes / (1024.0 * 1024.0));
+            long kilo = bytes / 1024;
+            long mega = kilo / 1024;
+            long giga = mega / 1024;
+            return String.format("%d entries, %d GB | %d MB | %d KB", count, giga, mega, kilo);
         }
     }
 }
