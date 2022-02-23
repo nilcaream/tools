@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.text.SimpleDateFormat;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -18,6 +19,7 @@ public class NameResolver {
     private static final Pattern NAME_EXTENSION = Pattern.compile("(.*)((20[0123][0-9])([01][0-9])([0123][0-9]))([^0-9].+)");
     private static final Set<String> EXTENSIONS = Set.of(".jpg", ".jpeg", ".mp4", ".mpeg", ".avi", ".mov", ".mts", ".gif");
     private static final Pattern DIRECTORY_DATE = Pattern.compile("20[0123][0-9]-[01][0-9]");
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd HHmmss");
 
     @Inject
     private Logger logger;

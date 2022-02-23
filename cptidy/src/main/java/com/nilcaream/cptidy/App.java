@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
@@ -71,6 +72,7 @@ public class App {
     private final List<Statistics> statistics = new ArrayList<>();
 
     public static void main(String[] args) throws IOException {
+        Locale.setDefault(Locale.ROOT);
         App app = Atto.builder().build().instance(App.class);
         UtilArgs.bind(args, app);
         UtilArgs.bind(args, app.ioService);
@@ -245,9 +247,13 @@ public class App {
                     logger.label(stats.getId());
                     stats.getData().forEach((k, v) -> logger.info(k, v.toString()));
                 });
+                if (!logger.getWarns().isEmpty()) {
+                    logger.label("warnings");
+                    logger.getWarns().forEach(e -> logger.info("warning", e));
+                }
                 if (!logger.getErrors().isEmpty()) {
                     logger.label("errors");
-                    logger.getErrors().forEach(e -> logger.warn("error", e));
+                    logger.getErrors().forEach(e -> logger.info("error", e));
                 }
                 logger.label("");
                 logger.info("", "total time", (currentTimeMillis() - time) / 1000, "seconds");

@@ -58,7 +58,15 @@ public class Io {
     }
 
     public boolean isSameFile(Path source, Path target) throws IOException {
-        return Files.exists(source) && Files.exists(target) && Files.isSameFile(source, target);
+        if (Files.exists(source) && Files.exists(target)) {
+            if (!Files.isRegularFile(source) || !Files.isRegularFile(target)) {
+                throw new IllegalArgumentException("Symlinks are not supported " + source + ", " + target);
+            } else {
+                return source.toRealPath().toString().equals(target.toRealPath().toString()) || Files.isSameFile(source, target);
+            }
+        } else {
+            return false;
+        }
     }
 
     public List<String> getExif(Path path) {

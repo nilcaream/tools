@@ -567,6 +567,16 @@ class IoServiceTest {
     }
 
     @Test
+    void shouldFailOnRetainOnSinglePath() throws IOException {
+        // given
+        Path path = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");
+        underTest.setDelete(true);
+
+        // when
+        assertThatThrownBy(() -> underTest.retainOne(List.of(path))).hasMessageContaining("Should provide more than 1 path");
+    }
+
+    @Test
     void shouldFailOnRetainNonDistinctPaths() throws IOException {
         // given
         Path path1 = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");
@@ -574,7 +584,32 @@ class IoServiceTest {
         underTest.setDelete(true);
 
         // when
-        assertThatThrownBy(() -> underTest.retainOne(List.of(path1, path2))).hasMessageContaining("Should provide more than 1 path");
+        assertThatThrownBy(() -> underTest.retainOne(List.of(path1, path2))).hasMessageContaining("Should provide different paths");
+    }
+
+    @Test
+    void shouldFailOnRetainNonDistinctNonRealPaths2() throws IOException {
+        // given
+        io.write(root.resolve("te").resolve("second").resolve("other.txt"), "o");
+        Path path1 = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");
+        Path path2 = root.resolve("te").resolve("second").resolve("..").resolve("test-file.jpg");
+        underTest.setDelete(true);
+
+        // when
+        assertThatThrownBy(() -> underTest.retainOne(List.of(path1, path2))).hasMessageContaining("Should provide different paths");
+    }
+
+    @Test
+    void shouldFailOnRetainNonDistinctNonRealPaths3() throws IOException {
+        // given
+        io.write(root.resolve("te").resolve("second").resolve("other.txt"), "o");
+        Path path1 = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");
+        Path path2 = root.resolve("te").resolve("second").resolve("..").resolve("test-file.jpg");
+        Path path3 = io.write(root.resolve("te").resolve("other.dat"), "testX");
+        underTest.setDelete(true);
+
+        // when
+        assertThatThrownBy(() -> underTest.retainOne(List.of(path3, path1, path2))).hasMessageContaining("Should provide different paths");
     }
 
     @Test

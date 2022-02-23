@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -47,6 +49,8 @@ public class IoService {
 
     private Set<String> ignoredFiles = Set.of(".picasa.ini", "Picasa.ini", "desktop.ini", "Thumbs.db", "ZbThumbnail.info");
 
+    private final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9])*");
+
     public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
         Path result = ofNullable(nameResolver.resolve(source)).map(r -> r.resolve(targetRoot)).orElse(null);
         logger.stat("total", source);
@@ -62,40 +66,79 @@ public class IoService {
     }
 
     public boolean haveSameAttributes(Path source, Path target) throws IOException {
-        if (Files.exists(source) && Files.exists(target)) {
-            return getAttributes(source).equals(getAttributes(target));
+        assertExists(source, target);
+        assertDifferent(source, target);
+        return getAttributes(source).equals(getAttributes(target));
+    }
+
+    private FileTime getCorrectTimestamp(Path path) throws IOException {
+        FileTime fileTime = getCreateTime(path);
+        String name = path.getFileName().toString();
+        String date = fileTime.toString().substring(0, 10).replace("-", ""); // yyyy-MM-dd -> yyyyMMdd
+        return name.contains(date) ? fileTime : null;
+    }
+
+    // 1 - yyyyMMdd
+    private static final Pattern NAME_EXTENSION = Pattern.compile("([0-9]{8})-.+");
+    private static final SimpleDateFormat DATE_FORMAT_PARSE = new SimpleDateFormat("yyyyMMdd HHmmss");
+    private static final SimpleDateFormat DATE_FORMAT_DISPLAY = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+    private Date getDateFromName(String name) {
+        Matcher matcher = NAME_EXTENSION.matcher(name);
+        Date result = null;
+        if (matcher.matches()) {
+            try {
+                result = DATE_FORMAT_PARSE.parse(matcher.group(1) + " 120000");
+            } catch (ParseException e) {
+                logger.warn("invalid-date", name);
+            }
+        }
+        return result;
+    }
+
+    private void setTimestampFromName(Path path) throws IOException {
+        Date date = getDateFromName(path.getFileName().toString());
+        if (date == null) {
+            setTimestamp(path, FileTime.fromMillis(0));
         } else {
-            return false;
+            setTimestamp(path, FileTime.fromMillis(date.getTime()));
         }
     }
 
     public void fixTimestamps(Path source, Path target) throws IOException {
-        FileTime sourceFileTime = Files.readAttributes(source, BasicFileAttributes.class).creationTime();
-        FileTime targetFileTime = Files.readAttributes(target, BasicFileAttributes.class).creationTime();
+        FileTime sourceFileTime = getCorrectTimestamp(source);
+        FileTime targetFileTime = getCorrectTimestamp(target);
 
-        long sourceTime = sourceFileTime.toMillis();
-        long targetTime = targetFileTime.toMillis();
-
-        if (sourceTime > targetTime) {
-            logger.debugStat("time-fix", source, ":", targetFileTime.toString());
-            copyAttributes(target, source);
-        } else if (sourceTime < targetTime) {
-            logger.debugStat("time-fix", target, ":", sourceFileTime.toString());
-            copyAttributes(source, target);
+        if (sourceFileTime != null) {
+            setTimestamp(target, sourceFileTime);
+        } else if (targetFileTime != null) {
+            setTimestamp(source, targetFileTime);
+        } else {
+            setTimestampFromName(source);
+            setTimestampFromName(target);
         }
     }
 
-    private void copyAttributes(Path source, Path target) throws IOException {
+    private FileTime getCreateTime(Path path) throws IOException {
+        return Files.readAttributes(path, BasicFileAttributes.class).creationTime();
+    }
+
+    private void setTimestamp(Path path, FileTime fileTime) throws IOException {
+        String from = asString(getCreateTime(path));
+        String to = asString(fileTime);
+        logger.infoStat("time-fix", path, ":", from, ">", to);
         if (copy) {
-            BasicFileAttributes from = Files.readAttributes(source, BasicFileAttributes.class);
-            BasicFileAttributeView to = Files.getFileAttributeView(target, BasicFileAttributeView.class);
-            to.setTimes(from.lastModifiedTime(), from.lastAccessTime(), from.creationTime());
+            Files.getFileAttributeView(path, BasicFileAttributeView.class).setTimes(fileTime, fileTime, fileTime);
         }
+    }
+
+    private String asString(FileTime fileTime) {
+        return DATE_FORMAT_DISPLAY.format(new Date(fileTime.toMillis()));
     }
 
     private String getAttributes(Path path) throws IOException {
         BasicFileAttributes attr = Files.readAttributes(path, BasicFileAttributes.class);
-        String creation = attr.creationTime().toString();
+        String creation = asString(attr.creationTime());
         return format("%s/%s %d %s", path.getParent().getFileName().toString(), path.getFileName().toString(), Files.size(path), creation);
     }
 
@@ -107,18 +150,33 @@ public class IoService {
         }
     }
 
-    private void assertExists(Path path) {
-        if (!Files.exists(path)) {
-            throw new IllegalStateException(path + " does not exists for deletion");
+    private void assertExists(Path... paths) {
+        for (Path path : paths) {
+            if (!Files.exists(path)) {
+                throw new IllegalStateException(path + " does not exists for deletion");
+            }
+        }
+    }
+
+    private void assertDifferent(Path... paths) throws IOException {
+        if (paths == null || paths.length < 2) {
+            throw new IllegalArgumentException("Should provide at least 2 paths ");
+        }
+        for (int a = 0; a < paths.length; a++) {
+            for (int b = a + 1; b < paths.length; b++) {
+                Path pathA = paths[a];
+                Path pathB = paths[b];
+                if (io.isSameFile(pathA, pathB)) {
+                    throw new IllegalArgumentException("Should provide different paths " + pathA + ", " + pathB);
+                }
+
+            }
         }
     }
 
     public void deleteOne(Path fileA, Path fileB) throws IOException {
-        assertExists(fileA);
-        assertExists(fileB);
-        if (io.isSameFile(fileA, fileB)) {
-            throw new IllegalArgumentException("Should provide different paths");
-        }
+        assertExists(fileA, fileB);
+        assertDifferent(fileA, fileB);
 
         Path path = selectToDelete(fileA, fileB);
         logger.infoStat("delete", path);
@@ -129,10 +187,11 @@ public class IoService {
     }
 
     public void retainOne(Collection<Path> paths) throws IOException {
-        if (paths.stream().distinct().count() < 2) {
+        if (paths.size() < 2) {
             throw new IllegalArgumentException("Should provide more than 1 path");
         }
-        paths.forEach(this::assertExists);
+        assertExists(paths.toArray(new Path[]{}));
+        assertDifferent(paths.toArray(new Path[]{}));
 
         Map<Path, Integer> pathToScore = paths.stream().collect(Collectors.toMap(p -> p, p -> 0));
 
@@ -165,8 +224,6 @@ public class IoService {
             }
         }
     }
-
-    private final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9])*");
 
     private String removeCopySuffix(String text) {
         Matcher matcher = COPY_SUFFIX.matcher(text);

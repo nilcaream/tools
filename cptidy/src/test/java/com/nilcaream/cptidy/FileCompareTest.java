@@ -39,8 +39,8 @@ class FileCompareTest {
     private Path pathB;
     private String content;
 
-    private static byte[] bufferA = new byte[4 * 1024 * 1024];
-    private static byte[] bufferB = new byte[4 * 1024 * 1024];
+    private byte[] bufferA = new byte[4 * 1024 * 1024];
+    private byte[] bufferB = new byte[4 * 1024 * 1024];
 
     private Io io = new Io();
 

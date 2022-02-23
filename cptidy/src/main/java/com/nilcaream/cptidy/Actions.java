@@ -92,17 +92,17 @@ public class Actions {
                             .filter(e -> e.getValue().size() > 1)
                             .map(Map.Entry::getValue)
                             .forEach(paths -> {
-                                for (Path file : paths) {
-                                    for (Path copy : paths) {
-                                        if (file != copy) {
-                                            try {
-                                                if (!ioService.isSameFile(file, copy) && ioService.haveSameContent(file, copy)) {
-                                                    logger.infoStat("duplicate", file, "=", copy);
-                                                    ioService.deleteOne(file, copy);
-                                                }
-                                            } catch (IOException e) {
-                                                logger.error("error", e, file, ":", copy);
+                                for (int a = 0; a < paths.size(); a++) {
+                                    for (int b = a + 1; b < paths.size(); b++) {
+                                        Path file = paths.get(a);
+                                        Path copy = paths.get(b);
+                                        try {
+                                            if (!ioService.isSameFile(file, copy) && ioService.haveSameContent(file, copy)) {
+                                                logger.infoStat("duplicate", file, "=", copy);
+                                                ioService.deleteOne(file, copy);
                                             }
+                                        } catch (IOException e) {
+                                            logger.error("error", e, file, ":", copy);
                                         }
                                     }
                                 }
@@ -161,7 +161,7 @@ public class Actions {
                     if (ioService.isSameFile(source, target)) {
                         // source file is exactly the same file as target
                         logger.error("same file", source);
-                    } else if (ioService.haveSameAttributes(source, target)) {
+                    } else if (Files.exists(target) && ioService.haveSameAttributes(source, target)) {
                         // same parent name, file name, size and create date time
                         logger.stat("same attributes", source);
                     } else if (ioService.haveSameContent(source, target)) {

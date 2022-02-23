@@ -145,26 +145,19 @@ class ActionsTest {
 
         given(ioService.isSameFile(duplicate1, notDuplicated)).willReturn(false);
         given(ioService.isSameFile(duplicate2, notDuplicated)).willReturn(false);
-        given(ioService.isSameFile(notDuplicated, duplicate1)).willReturn(false);
-        given(ioService.isSameFile(notDuplicated, duplicate2)).willReturn(false);
 
-        given(ioService.haveSameContent(notDuplicated, duplicate1)).willReturn(false);
-        given(ioService.haveSameContent(notDuplicated, duplicate2)).willReturn(false);
         given(ioService.haveSameContent(duplicate1, notDuplicated)).willReturn(false);
         given(ioService.haveSameContent(duplicate2, notDuplicated)).willReturn(false);
 
         given(ioService.isSameFile(duplicate1, duplicate2)).willReturn(false);
-        given(ioService.isSameFile(duplicate2, duplicate1)).willReturn(false);
 
         given(ioService.haveSameContent(duplicate1, duplicate2)).willReturn(true);
-        given(ioService.haveSameContent(duplicate2, duplicate1)).willReturn(true);
 
         // when
         underTest.removeDuplicates("id", root);
 
         // then
         verify(ioService, times(1)).deleteOne(duplicate1, duplicate2);
-        verify(ioService, times(1)).deleteOne(duplicate2, duplicate1); // twice as file is actually not deleted
         verifyNoMoreInteractions(ioService);
     }
 }
