@@ -66,7 +66,7 @@ public class Actions {
         return logger.getStatistics();
     }
 
-    public Statistics removeDuplicates(String id, Path root) {
+    public Statistics removeDuplicatesPerDirectory(String id, Path root) {
         logger.info(id, root);
         logger.resetStatistics(id);
         marker.reset();
@@ -298,32 +298,19 @@ public class Actions {
         ioTest.test2(root, 128 * 1024 * 1024, 16 * 1024 * 1024);
     }
 
-    // TODO implement
-    private Statistics findSelfCopies(String id, Path source) {
-        logger.info(id, source);
+    public Statistics removeDuplicatesGlobally(String id, Path root) {
+        logger.info(id, root);
         logger.resetStatistics(id);
         marker.reset();
 
         Map<Long, List<Path>> sizeToPaths = new HashMap<>();
 
-        logger.info("source-1", source);
-        try (Stream<Path> walk = Files.walk(source)) {
-            walk.filter(Files::isDirectory).forEach(directory -> {
+        try (Stream<Path> walk = Files.walk(root)) {
+            walk.filter(Files::isRegularFile).forEach(file -> {
                 try {
-                    marker.mark(directory);
-                    int[] count = new int[]{0};
-                    Files.list(directory)
-                            .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
-                            .forEach(path -> {
-                                count[0]++;
-                                marker.mark(path);
-                                long size = ioService.size(path);
-                                if (size > 1024) {
-                                    List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
-                                    paths.add(path);
-                                }
-                            });
-                    logger.info("directory", directory, ":", count[0], "files");
+                    marker.mark(file);
+                    List<Path> paths = sizeToPaths.computeIfAbsent(Files.size(file), k -> new ArrayList<>());
+                    paths.add(file);
                 } catch (IOException e) {
                     logger.error("error", e, "File processing error");
                 }
@@ -332,10 +319,25 @@ public class Actions {
             logger.error("error", e, "Directory processing error");
         }
 
-        logger.info("source-2", source);
-        sizeToPaths.values().stream().filter(v -> v.size() > 1).forEach(paths -> {
-            // TODO implement
-        });
+        logger.info("scan completed", "found", sizeToPaths.size(), "unique file sizes");
+
+        sizeToPaths.entrySet().stream()
+                .filter(e -> e.getKey() > 1024)
+                .filter(e -> e.getValue().size() > 1)
+                .map(Map.Entry::getValue)
+                .forEach(paths -> {
+                    try {
+                        if (ioService.haveSameContent(paths)) {
+                            ioService.retainOne(paths);
+                        } else {
+                            for (Path path : paths) {
+                                logger.infoStat("different", path);
+                            }
+                        }
+                    } catch (IOException e) {
+                        logger.error("error", e, "Delete error");
+                    }
+                });
 
         logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");

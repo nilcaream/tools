@@ -2,6 +2,7 @@ package com.nilcaream.cptidy;
 
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -12,7 +13,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -37,6 +44,11 @@ class IoServiceTest {
     private Io io = new Io();
 
     private Path root = Jimfs.newFileSystem(Configuration.unix()).getPath("unix").toAbsolutePath();
+
+    @BeforeAll
+    static void beforeAll() {
+        Locale.setDefault(Locale.ROOT);
+    }
 
     @Test
     void shouldBuildMatchingTarget() throws IOException {
@@ -361,6 +373,7 @@ class IoServiceTest {
         Files.createDirectories(root.resolve("test").resolve("second").resolve("other"));
         io.write(root.resolve("test").resolve(".picasa.ini"), "not empty but ignored");
         underTest.setDelete(true);
+        underTest.setIgnoredFiles(Set.of(".picasa.ini"));
 
         // when
         underTest.deleteEmpty(root, root.resolve("test").resolve("second").resolve("other"));
@@ -621,5 +634,83 @@ class IoServiceTest {
 
         // when
         assertThatThrownBy(() -> underTest.deleteOne(path1, path2)).hasMessageContaining("Should provide different paths");
+    }
+
+    @Test
+    void shouldSetTimestampFromSourceMatch() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
+        Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
+        FileTime fileTime = FileTime.from(Instant.parse("2010-12-11T10:15:30.00Z"));
+        Files.getFileAttributeView(path1, BasicFileAttributeView.class).setTimes(fileTime, fileTime, fileTime);
+        underTest.setCopy(true);
+
+        // when
+        underTest.fixTimestamps(path1, path2);
+
+        // then
+        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
+        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
+    }
+
+    @Test
+    void shouldSetTimestampFromTargetMatch() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
+        Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
+        FileTime fileTime = FileTime.from(Instant.parse("2010-12-11T10:15:30.00Z"));
+        Files.getFileAttributeView(path1, BasicFileAttributeView.class).setTimes(fileTime, fileTime, fileTime);
+        underTest.setCopy(true);
+
+        // when
+        underTest.fixTimestamps(path2, path1);
+
+        // then
+        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
+        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
+    }
+
+    @Test
+    void shouldSetTimestampFromFileName() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
+        Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
+        underTest.setCopy(true);
+
+        // when
+        underTest.fixTimestamps(path2, path1);
+
+        // then
+        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T12:00:00.00Z"));
+        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2001-01-02T12:00:00.00Z"));
+    }
+
+    @Test
+    void shouldSetDefaultTimestamp() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("2010xx1211-test.jpg"), "testX");
+        Path path2 = io.write(root.resolve("te").resolve("30010102-wwww.jpg"), "testX");
+        underTest.setCopy(true);
+
+        // when
+        underTest.fixTimestamps(path2, path1);
+
+        // then
+        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
+        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
+    }
+
+    @Test
+    void shouldNotSetDefaultTimestamp() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("2010xx1211-test.jpg"), "testX");
+        Path path2 = io.write(root.resolve("te").resolve("30010102-wwww.jpg"), "testX");
+
+        // when
+        underTest.fixTimestamps(path2, path1);
+
+        // then
+        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isNotEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
+        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isNotEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
     }
 }

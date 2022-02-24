@@ -7,7 +7,6 @@ import com.nilcaream.utilargs.UtilArgs;
 import javax.inject.Inject;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -51,8 +50,8 @@ public class App {
     @Option(alternative = "test")
     private boolean test;
 
-    @Option(alternative = "date")
-    private List<String> explicitDates = emptyList();
+    @Option(alternative = "configuration")
+    private String configurationFile;
 
     @Inject
     private IoService ioService;
@@ -95,28 +94,19 @@ public class App {
 
         marker.setPeriod(5000);
 
-        List<String> explicitDatesResolved = new ArrayList<>();
-
-        for (String date : explicitDates) {
-            if (date.contains("=")) {
-                String[] split = date.split("=", 2);
-                nameResolver.addDate(split[0].trim(), split[1].trim());
-                explicitDatesResolved.add(split[0].trim() + "=" + split[1].trim());
-            } else {
-                Files.readAllLines(Paths.get(date)).stream()
-                        .filter(x -> x.contains("="))
-                        .map(x -> x.split("=", 2))
-                        .forEach(split -> {
-                            nameResolver.addDate(split[0].trim(), split[1].trim());
-                            explicitDatesResolved.add(split[0].trim() + "=" + split[1].trim());
-                        });
-            }
+        Configuration configuration = new Configuration();
+        if (configurationFile != null) {
+            configuration.load(asPath(configurationFile));
         }
 
-        explicitDates = explicitDatesResolved;
-        if (!explicitDates.isEmpty()) {
-            logger.info("Dates", String.join(" ", explicitDates));
-        }
+        configuration.getIgnored().forEach(ignored -> logger.info("ignored", ignored));
+        ioService.setIgnoredFiles(configuration.getIgnored());
+
+        configuration.getExplicitDates().forEach((pattern, value) -> {
+            nameResolver.addDate(pattern, value);
+            logger.info("explicit date", pattern, "=", value);
+        });
+
         logger.label("");
     }
 
@@ -188,9 +178,7 @@ public class App {
                             statistics.add(actions.removeEmpty("no-empty", source));
                         });
                     }
-                } else if (removeDuplicates && hasTarget()) {
-                    require(true, true);
-
+                } else if (removeDuplicates && hasSource() && hasTarget()) {
                     sourceDirectories.stream().map(this::asPath).forEach(source -> {
                         statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory)));
                     });
@@ -200,17 +188,21 @@ public class App {
                             statistics.add(actions.removeEmpty("no-empty", source));
                         });
                     }
-                } else if (removeDuplicates) { // only source
-                    require(true, false);
-
+                } else if (removeDuplicates && hasSource()) { // random files in source directory
                     sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                        statistics.add(actions.removeDuplicates("no-self-copies", source));
+                        statistics.add(actions.removeDuplicatesGlobally("no-source-copies", source));
                     });
 
                     if (removeEmpty) {
                         sourceDirectories.stream().map(this::asPath).forEach(source -> {
                             statistics.add(actions.removeEmpty("no-empty", source));
                         });
+                    }
+                } else if (removeDuplicates && hasTarget()) { // directory-ordered files in target directory
+                    statistics.add(actions.removeDuplicatesPerDirectory("no-target-copies", asPath(targetDirectory)));
+
+                    if (removeEmpty) {
+                        statistics.add(actions.removeEmpty("no-empty", asPath(targetDirectory)));
                     }
                 } else if (reorganize) {
                     require(true, false);

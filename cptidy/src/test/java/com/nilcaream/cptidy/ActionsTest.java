@@ -154,7 +154,7 @@ class ActionsTest {
         given(ioService.haveSameContent(duplicate1, duplicate2)).willReturn(true);
 
         // when
-        underTest.removeDuplicates("id", root);
+        underTest.removeDuplicatesPerDirectory("id", root);
 
         // then
         verify(ioService, times(1)).deleteOne(duplicate1, duplicate2);

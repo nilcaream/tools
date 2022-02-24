@@ -10,8 +10,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -47,9 +47,12 @@ public class IoService {
     @Option(alternative = "fast")
     private boolean fast = false;
 
-    private Set<String> ignoredFiles = Set.of(".picasa.ini", "Picasa.ini", "desktop.ini", "Thumbs.db", "ZbThumbnail.info");
+    private Set<String> ignoredFiles = new HashSet<>();
 
-    private final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9])*");
+    // 1 - yyyy, 2 - MM, 3 - dd
+    private static final Pattern NAME_EXTENSION = Pattern.compile("([12][0-9]{3})([01][0-9])([0123][0-9])-.+");
+    private static final Instant DEFAULT_TIMESTAMP = Instant.parse("2000-01-01T12:00:00.00Z");
+    private static final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9])*");
 
     public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
         Path result = ofNullable(nameResolver.resolve(source)).map(r -> r.resolve(targetRoot)).orElse(null);
@@ -74,22 +77,17 @@ public class IoService {
     private FileTime getCorrectTimestamp(Path path) throws IOException {
         FileTime fileTime = getCreateTime(path);
         String name = path.getFileName().toString();
-        String date = fileTime.toString().substring(0, 10).replace("-", ""); // yyyy-MM-dd -> yyyyMMdd
+        String date = fileTime.toString().substring(0, 10).replace("-", ""); // yyyy-MM-ddTHH:mm:ss -> yyyyMMdd
         return name.contains(date) ? fileTime : null;
     }
 
-    // 1 - yyyyMMdd
-    private static final Pattern NAME_EXTENSION = Pattern.compile("([0-9]{8})-.+");
-    private static final SimpleDateFormat DATE_FORMAT_PARSE = new SimpleDateFormat("yyyyMMdd HHmmss");
-    private static final SimpleDateFormat DATE_FORMAT_DISPLAY = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-
-    private Date getDateFromName(String name) {
+    private Instant getDateFromName(String name) {
         Matcher matcher = NAME_EXTENSION.matcher(name);
-        Date result = null;
+        Instant result = null;
         if (matcher.matches()) {
             try {
-                result = DATE_FORMAT_PARSE.parse(matcher.group(1) + " 120000");
-            } catch (ParseException e) {
+                result = Instant.parse(matcher.group(1) + "-" + matcher.group(2) + "-" + matcher.group(3) + "T12:00:00.00Z");
+            } catch (DateTimeParseException e) {
                 logger.warn("invalid-date", name);
             }
         }
@@ -97,12 +95,8 @@ public class IoService {
     }
 
     private void setTimestampFromName(Path path) throws IOException {
-        Date date = getDateFromName(path.getFileName().toString());
-        if (date == null) {
-            setTimestamp(path, FileTime.fromMillis(0));
-        } else {
-            setTimestamp(path, FileTime.fromMillis(date.getTime()));
-        }
+        Instant instant = ofNullable(getDateFromName(path.getFileName().toString())).orElse(DEFAULT_TIMESTAMP);
+        setTimestamp(path, FileTime.from(instant));
     }
 
     public void fixTimestamps(Path source, Path target) throws IOException {
@@ -126,14 +120,18 @@ public class IoService {
     private void setTimestamp(Path path, FileTime fileTime) throws IOException {
         String from = asString(getCreateTime(path));
         String to = asString(fileTime);
-        logger.infoStat("time-fix", path, ":", from, ">", to);
+        if (fileTime.toInstant().equals(DEFAULT_TIMESTAMP)) {
+            logger.infoStat("time-default", path, ":", from, ">", to);
+        } else {
+            logger.infoStat("time-fix", path, ":", from, ">", to);
+        }
         if (copy) {
             Files.getFileAttributeView(path, BasicFileAttributeView.class).setTimes(fileTime, fileTime, fileTime);
         }
     }
 
     private String asString(FileTime fileTime) {
-        return DATE_FORMAT_DISPLAY.format(new Date(fileTime.toMillis()));
+        return fileTime.toString().replaceAll("\\.\\d+", "").replaceAll("[TZ]", " ").trim();
     }
 
     private String getAttributes(Path path) throws IOException {
@@ -333,21 +331,21 @@ public class IoService {
     private boolean deleteIgnoredFiles(List<Path> files) throws IOException {
         if (files.isEmpty()) {
             return true;
-        } else if (files.size() == 1 && isIgnoredFile(files.get(0))) {
-            logger.infoStat("delete ignored", files.get(0));
+        } else if (files.stream().allMatch(this::isIgnoredFile)) {
+            for (Path file : files) {
+                logger.infoStat("delete ignored", file);
 
-            if (delete) {
-                io.delete(files.get(0));
-                return true;
-            } else {
-                return false;
+                if (delete) {
+                    io.delete(file);
+                }
             }
+            return delete;
         }
         return false;
     }
 
-    private boolean isIgnoredFile(Path path) throws IOException {
-        return Files.isRegularFile(path) && (Files.size(path) == 0 || ignoredFiles.contains(path.getFileName().toString()));
+    private boolean isIgnoredFile(Path path) {
+        return Files.isRegularFile(path) && (size(path) == 0 || ignoredFiles.contains(path.getFileName().toString()));
     }
 
     public long size(Path path) {
@@ -399,5 +397,20 @@ public class IoService {
 
     public void setFast(boolean fast) {
         this.fast = fast;
+    }
+
+    public void setIgnoredFiles(Set<String> ignoredFiles) {
+        this.ignoredFiles = ignoredFiles;
+    }
+
+    public boolean haveSameContent(List<Path> paths) throws IOException {
+        for (int a = 0; a < paths.size(); a++) {
+            for (int b = a + 1; b < paths.size(); b++) {
+                if (haveSameContent(paths.get(a), paths.get(b))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
