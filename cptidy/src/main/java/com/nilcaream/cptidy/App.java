@@ -87,9 +87,9 @@ public class App {
 
         logger.label("");
         logger.info("Arguments", String.join(" ", args));
-        logger.info("Source", sourceDirectories);
-        logger.info("Target", targetDirectory);
-        logger.info("Options", opt("verbose", verbose), opt("copy", ioService.isCopy()), opt("move", ioService.isMove()), opt("delete", ioService.isDelete()), opt("fast", ioService.isFast()));
+        logger.info("Sources", hasSource() ? String.join(", ", sourceDirectories) : "");
+        logger.info("Target", hasTarget() ? targetDirectory : "");
+        logger.info("Options", opt("verbose", verbose), opt("copy", ioService.isCopy()), opt("move", ioService.isMove()), opt("delete", ioService.isDelete()), opt("fast", ioService.isFast()), opt("time", ioService.isTime()));
         logger.info("Actions", opt("analyze", analyze), opt("organize", organize), opt("reorganize", reorganize), opt("no-duplicates", removeDuplicates), opt("synchronize", synchronize), opt("no-empty", removeEmpty));
 
         marker.setPeriod(5000);

@@ -44,6 +44,9 @@ public class IoService {
     @Option(alternative = "copy")
     private boolean copy = false;
 
+    @Option(alternative = "time")
+    private boolean time = false;
+
     @Option(alternative = "fast")
     private boolean fast = false;
 
@@ -121,12 +124,16 @@ public class IoService {
         String from = asString(getCreateTime(path));
         String to = asString(fileTime);
         if (fileTime.toInstant().equals(DEFAULT_TIMESTAMP)) {
-            logger.infoStat("time-default", path, ":", from, ">", to);
+            logger.infoStat("time-default", path, ":", from, "->", to);
         } else {
-            logger.infoStat("time-fix", path, ":", from, ">", to);
+            logger.infoStat("time-fix", path, ":", from, "->", to);
         }
-        if (copy) {
-            Files.getFileAttributeView(path, BasicFileAttributeView.class).setTimes(fileTime, fileTime, fileTime);
+        if (time) {
+            try {
+                Files.getFileAttributeView(path, BasicFileAttributeView.class).setTimes(fileTime, null, fileTime);
+            } catch (IOException ignored) {
+                logger.infoStat("time-no-fix", path, "Could not set file times");
+            }
         }
     }
 
@@ -385,6 +392,14 @@ public class IoService {
 
     public boolean isCopy() {
         return copy;
+    }
+
+    public boolean isTime() {
+        return time;
+    }
+
+    public void setTime(boolean time) {
+        this.time = time;
     }
 
     public void setCopy(boolean copy) {

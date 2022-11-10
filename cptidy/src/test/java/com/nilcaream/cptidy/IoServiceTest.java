@@ -642,8 +642,8 @@ class IoServiceTest {
         Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
         Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
         FileTime fileTime = FileTime.from(Instant.parse("2010-12-11T10:15:30.00Z"));
-        Files.getFileAttributeView(path1, BasicFileAttributeView.class).setTimes(fileTime, fileTime, fileTime);
-        underTest.setCopy(true);
+        Files.getFileAttributeView(path1, BasicFileAttributeView.class).setTimes(fileTime, null, fileTime);
+        underTest.setTime(true);
 
         // when
         underTest.fixTimestamps(path1, path2);
@@ -659,8 +659,8 @@ class IoServiceTest {
         Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
         Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
         FileTime fileTime = FileTime.from(Instant.parse("2010-12-11T10:15:30.00Z"));
-        Files.getFileAttributeView(path1, BasicFileAttributeView.class).setTimes(fileTime, fileTime, fileTime);
-        underTest.setCopy(true);
+        Files.getFileAttributeView(path1, BasicFileAttributeView.class).setTimes(fileTime, null, fileTime);
+        underTest.setTime(true);
 
         // when
         underTest.fixTimestamps(path2, path1);
@@ -675,7 +675,7 @@ class IoServiceTest {
         // given
         Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
         Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
-        underTest.setCopy(true);
+        underTest.setTime(true);
 
         // when
         underTest.fixTimestamps(path2, path1);
@@ -690,7 +690,7 @@ class IoServiceTest {
         // given
         Path path1 = io.write(root.resolve("te").resolve("2010xx1211-test.jpg"), "testX");
         Path path2 = io.write(root.resolve("te").resolve("30010102-wwww.jpg"), "testX");
-        underTest.setCopy(true);
+        underTest.setTime(true);
 
         // when
         underTest.fixTimestamps(path2, path1);

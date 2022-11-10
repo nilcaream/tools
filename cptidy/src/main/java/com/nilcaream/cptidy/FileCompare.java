@@ -63,13 +63,13 @@ public class FileCompare {
 
             try (FileChannel channelA = (FileChannel) Files.newByteChannel(pathA); FileChannel channelB = (FileChannel) Files.newByteChannel(pathB)) {
                 if (isNotEqual(channelA, channelB, 0, bufferSize)) { // start
-                    logger.infoStat("diff start", pathA, "<>", pathB);
+                    logger.infoStat("diff start", pathA, "<->", pathB);
                     return false;
                 } else if (isNotEqual(channelA, channelB, fileSize - bufferSize, fileSize)) { // end
-                    logger.infoStat("diff end", pathA, "<>", pathB);
+                    logger.infoStat("diff end", pathA, "<->", pathB);
                     return false;
                 } else if (isNotEqual(channelA, channelB, fileSize / 2 - bufferSize, fileSize / 2 + bufferSize)) { // middle
-                    logger.infoStat("diff middle", pathA, "<>", pathB);
+                    logger.infoStat("diff middle", pathA, "<->", pathB);
                     return false;
                 }
             }

@@ -31,7 +31,7 @@ public class Actions {
     private IoTest ioTest;
 
     public Statistics organize(String id, Path sourceRoot, Path targetRoot) {
-        logger.info(id, sourceRoot, ">", targetRoot);
+        logger.info(id, sourceRoot, "->", targetRoot);
         logger.resetStatistics(id);
         marker.reset();
 
