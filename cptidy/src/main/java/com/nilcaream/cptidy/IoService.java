@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.lang.String.format;
 import static java.util.Collections.emptyList;
@@ -321,7 +322,10 @@ public class IoService {
     public void deleteEmpty(Path root, Path orgPath) throws IOException {
         Path path = orgPath.normalize().toAbsolutePath();
         while (Files.exists(path) && Files.isDirectory(path) && path.startsWith(root) && !path.equals(root)) {
-            List<Path> files = Files.list(path).collect(Collectors.toList());
+            List<Path> files;
+            try (Stream<Path> list = Files.list(path)) {
+                files = list.collect(Collectors.toList());
+            }
             if (deleteIgnoredFiles(files)) {
                 logger.infoStat("delete empty", path);
 

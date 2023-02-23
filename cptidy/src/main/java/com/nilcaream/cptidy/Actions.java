@@ -40,6 +40,7 @@ public class Actions {
                 try {
                     marker.mark(source);
                     Path target = ioService.buildMatchingTarget(source, targetRoot);
+                    //noinspection StatementWithEmptyBody
                     if (target == null) {
                         // file is not matching target pattern or has no exif date
                     } else if (ioService.isSameFile(source, target)) {
@@ -77,14 +78,16 @@ public class Actions {
                     marker.mark(directory);
                     int[] count = new int[]{0};
                     Map<Long, List<Path>> sizeToPaths = new HashMap<>();
-                    Files.list(directory)
-                            .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
-                            .forEach(path -> {
-                                count[0]++;
-                                long size = ioService.size(path);
-                                List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
-                                paths.add(path);
-                            });
+                    try (Stream<Path> list = Files.list(directory)) {
+                        list
+                                .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
+                                .forEach(path -> {
+                                    count[0]++;
+                                    long size = ioService.size(path);
+                                    List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
+                                    paths.add(path);
+                                });
+                    }
                     logger.info("directory", directory, ":", count[0], "files");
 
                     sizeToPaths.entrySet().stream()
@@ -125,8 +128,9 @@ public class Actions {
         logger.resetStatistics(id);
         marker.reset();
 
-        try {
-            Files.walk(targetRoot).filter(Files::isDirectory)
+        try (Stream<Path> walk = Files.walk(targetRoot)) {
+            walk
+                    .filter(Files::isDirectory)
                     .peek(d -> marker.mark(d))
                     .collect(Collectors.toList())
                     .forEach(directory -> {
@@ -192,13 +196,19 @@ public class Actions {
 
         try {
             Path target = Paths.get("");
-            List<Path> directories = Files.walk(path).filter(Files::isDirectory).sorted().collect(Collectors.toList());
+            List<Path> directories;
+            try (Stream<Path> walk = Files.walk(path)) {
+                directories = walk.filter(Files::isDirectory).sorted().collect(Collectors.toList());
+            }
             logger.info("count", "Found", directories.size(), "directories");
             for (Path directory : directories) {
-                List<Path> files = Files.list(directory)
-                        .filter(Files::isRegularFile)
-                        .peek(marker::mark)
-                        .sorted().collect(Collectors.toList());
+                List<Path> files;
+                try (Stream<Path> list = Files.list(directory)) {
+                    files = list
+                            .filter(Files::isRegularFile)
+                            .peek(marker::mark)
+                            .sorted().collect(Collectors.toList());
+                }
                 for (Path file : files) {
                     marker.mark(file);
                     BasicFileAttributes attr = Files.readAttributes(file, BasicFileAttributes.class);
@@ -238,17 +248,19 @@ public class Actions {
                 try {
                     marker.mark(directory);
                     int[] count = new int[]{0};
-                    Files.list(directory)
-                            .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
-                            .forEach(path -> {
-                                count[0]++;
-                                marker.mark(path);
-                                long size = ioService.size(path);
-                                if (size > 1024) {
-                                    List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
-                                    paths.add(path);
-                                }
-                            });
+                    try (Stream<Path> list = Files.list(directory)) {
+                        list
+                                .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
+                                .forEach(path -> {
+                                    count[0]++;
+                                    marker.mark(path);
+                                    long size = ioService.size(path);
+                                    if (size > 1024) {
+                                        List<Path> paths = sizeToPaths.computeIfAbsent(size, k -> new ArrayList<>());
+                                        paths.add(path);
+                                    }
+                                });
+                    }
                     logger.info("directory", directory, ":", count[0], "files");
                 } catch (IOException e) {
                     logger.error("error", e, "File processing error");

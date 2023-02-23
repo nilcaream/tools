@@ -166,46 +166,46 @@ public class App {
                 if (analyze) {
                     require(true, false);
 
-                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                        statistics.add(actions.analyze("analyze", source));
-                    });
+                    sourceDirectories.stream()
+                            .map(this::asPath)
+                            .forEach(source -> statistics.add(actions.analyze("analyze", source)));
                 } else if (organize) {
                     require(true, true);
 
                     if (removeDuplicates) {
-                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                            statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory)));
-                        });
+                        sourceDirectories.stream()
+                                .map(this::asPath)
+                                .forEach(source -> statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory))));
                     }
 
-                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                        statistics.add(actions.organize("organize", source, asPath(targetDirectory)));
-                    });
+                    sourceDirectories.stream()
+                            .map(this::asPath)
+                            .forEach(source -> statistics.add(actions.organize("organize", source, asPath(targetDirectory))));
 
                     if (removeEmpty) {
-                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                            statistics.add(actions.removeEmpty("no-empty", source));
-                        });
+                        sourceDirectories.stream()
+                                .map(this::asPath)
+                                .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
                     }
                 } else if (removeDuplicates && hasSource() && hasTarget()) {
-                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                        statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory)));
-                    });
+                    sourceDirectories.stream()
+                            .map(this::asPath)
+                            .forEach(source -> statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory))));
 
                     if (removeEmpty) {
-                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                            statistics.add(actions.removeEmpty("no-empty", source));
-                        });
+                        sourceDirectories.stream()
+                                .map(this::asPath)
+                                .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
                     }
                 } else if (removeDuplicates && hasSource()) { // random files in source directory
-                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                        statistics.add(actions.removeDuplicatesGlobally("no-source-copies", source));
-                    });
+                    sourceDirectories.stream()
+                            .map(this::asPath)
+                            .forEach(source -> statistics.add(actions.removeDuplicatesGlobally("no-source-copies", source)));
 
                     if (removeEmpty) {
-                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                            statistics.add(actions.removeEmpty("no-empty", source));
-                        });
+                        sourceDirectories.stream()
+                                .map(this::asPath)
+                                .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
                     }
                 } else if (removeDuplicates && hasTarget()) { // directory-ordered files in target directory
                     statistics.add(actions.removeDuplicatesPerDirectory("no-target-copies", asPath(targetDirectory)));
@@ -216,22 +216,22 @@ public class App {
                 } else if (reorganize) {
                     require(true, false);
 
-                    sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                        statistics.add(actions.organize("reorganize", source, source));
-                    });
+                    sourceDirectories.stream()
+                            .map(this::asPath)
+                            .forEach(source -> statistics.add(actions.organize("reorganize", source, source)));
 
                     if (removeEmpty) {
-                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                            statistics.add(actions.removeEmpty("no-empty", source));
-                        });
+                        sourceDirectories.stream()
+                                .map(this::asPath)
+                                .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
                     }
                 } else if (removeEmpty) {
                     requireAny();
 
                     if (hasSource()) {
-                        sourceDirectories.stream().map(this::asPath).forEach(source -> {
-                            statistics.add(actions.removeEmpty("no-empty", source));
-                        });
+                        sourceDirectories.stream()
+                                .map(this::asPath)
+                                .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
                     }
                     if (hasTarget()) {
                         statistics.add(actions.removeEmpty("no-empty", asPath(targetDirectory)));
