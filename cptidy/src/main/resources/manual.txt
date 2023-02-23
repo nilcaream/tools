@@ -1,0 +1,116 @@
+analyze
+
+- Usage: check if vault (source argument) is properly organized.
+- Options: none.
+- Implementation details:
+-- Works on source paths only.
+-- Supports multiple source directories. Each is processed independently.
+-- No files are copied, deleted or modified.
+-- Tries to build valid target path for each file.
+-- Resolves parent directory name based on file creation data attribute.
+-- Output:
+--- failure - it is not possible to build valid target path for file,
+--- all match - target path is valid and it matches file creation date,
+--- partial match - target path is valid but it does not match file creation date.
+
+organize
+
+- Usage: move files from work directories (sources) to vault (target); clean-up work.
+- Options: fast, delete, move.
+- Implementation details:
+-- Requires source and target paths.
+-- Supports multiple source directories. Each is processed independently.
+-- If no-duplicates options is set, no-copies procedure is executed on each source vs. the target.
+--- Files are compared by size and content.
+--- Only file with size > 1kB are considered.
+--- The parent directory, file type and name is not relevant.
+--- If source file and target file are not the same file but have same content, source is marked as a duplicate.
+--- If duplicate is found, then it is deleted if delete option is set.
+--- File content comparison is optimized if fast option is set.
+-- Organize procedure is executed on each source vs. the target.
+--- Valid target path is built for each source file.
+---- If it is not possible to build target path (unknown file type, invalid name, no exif), then file is ignored.
+---- If source and target are the same file, then it is logged as ok-location.
+---- If source and target have same content, then source is deleted
+----- Options used: delete, fast.
+---- Otherwise, source is moved to target.
+----- Unique target file name is created if target already contains a different file.
+----- Options used: move.
+-- If no-empty option is set, then no-empty procedure is executed on each source.
+--- Each directory is checked and is deleted if any of below conditions are met:
+---- Directory does not contain any files or directories.
+---- Contains only empty files (zero size) or ignored files.
+----- Ignored file list is configured in configuration file though configuration option.
+----- Empty and ignored files are deleted only if they are only files in the directory.
+--- Options used: delete
+
+no-duplicates with sources and target
+
+- Usage: delete files from work directories (sources) that are already present in vault (target); clean-up work.
+- Usage: remove any duplicated files from source if they are present in target; clean-up source.
+- Options: fast, delete
+- Implementation details:
+-- No-copies procedure is executed on each source vs. the target.
+--- See implementation details in Organize.
+-- If no-empty option is set, then no-empty procedure is executed on each source.
+--- See implementation details in Organize.
+
+no-duplicates with sources only
+
+- Usage: delete duplicated files in each work directory (sources) irrespective of their parent directory; clean-up work.
+- Options: fast, delete
+- Implementation details:
+-- No-source-copies procedure is executed on each source.
+--- Each regular file of size > 1kB is scanned.
+--- Files of the same size are grouped.
+--- Each group is divided into subgroups of same content files.
+--- Subgroup with most files is chosen. Only one file from such subgroup is retained. Others are deleted.
+--- Options used: fast, delete
+-- If no-empty option is set, then no-empty procedure is executed on each source.
+--- See implementation details in Organize.
+
+no-duplicates with target only
+
+- Usage: delete duplicated files from each organized directory in the vault; clean-up vault.
+- Options: fast, delete
+- Implementation details:
+-- No-target-copies procedure is executed on the target.
+--- Each target child directory is scanned individually.
+--- Each regular file of size > 1kB is scanned.
+--- Files of the same size are grouped.
+--- Each file within the group is compared with another. If they are the same, one of the files is deleted.
+--- Options used: fast, delete
+-- If no-empty option is set, then no-empty procedure is executed on the target.
+--- See implementation details in Organize.
+
+reorganize
+
+- Usage: reapply the organizing rules on existing vault; clean-up vault.
+- Options: fast, delete, move.
+- Implementation details:
+-- Works on source paths only.
+-- Supports multiple source directories. Each is processed independently.
+-- Organize procedure is executed on each source vs. the same source.
+--- See implementation details in Organize.
+-- If no-empty option is set, then no-empty procedure is executed on the target.
+--- See implementation details in Organize.
+
+no-empty
+
+- Usage: delete directories that are empty or contain only empty or ignored files.
+- Options: delete.
+- Implementation details:
+-- Executes no-empty procedure on all source paths and target path (each independently).
+--- See implementation details in Organize.
+
+synchronize
+
+- Usage: synchronizes source vault with target vault.
+- Options: fast, time, copy.
+- Implementation details:
+-- Requires a single source and target path.
+-- Each file from source is checked if it exists under the same relative path in target.
+--- If it exists and have same file attributes, then it is logged as same attributes.
+--- If it has same content, then file timestamps are corrected.
+---- Source, target or both files attributes can be modified (if file-system supported).
+--- Otherwise source is copied to target.

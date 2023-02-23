@@ -552,6 +552,27 @@ class IoServiceTest {
     }
 
     @Test
+    void shouldSelectFilesWithSameContent() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("te").resolve("test-file-jpg"), "testX");
+        Path path2 = io.write(root.resolve("tes").resolve("test-file-jp"), "testX");
+        Path path3 = io.write(root.resolve("test").resolve("test-file-j"), "AAAAA");
+        Path path4 = io.write(root.resolve("test").resolve("test-file-zzz"), "testX");
+        given(fileCompare.byteByByte(path1, path2)).willReturn(true);
+        given(fileCompare.byteByByte(path1, path3)).willReturn(false);
+        given(fileCompare.byteByByte(path1, path4)).willReturn(true);
+        given(fileCompare.byteByByte(path2, path3)).willReturn(false);
+        given(fileCompare.byteByByte(path2, path4)).willReturn(true);
+        given(fileCompare.byteByByte(path3, path4)).willReturn(false);
+
+        // when
+        List<Path> actual = underTest.haveSameContent(List.of(path1, path2, path3, path4));
+
+        // then
+        assertThat(actual).containsOnly(path1, path2, path4);
+    }
+
+    @Test
     void shouldNotDeleteBestMatchPath() throws IOException {
         // given
         Path path1 = io.write(root.resolve("te").resolve("test-file.jpg"), "testX");

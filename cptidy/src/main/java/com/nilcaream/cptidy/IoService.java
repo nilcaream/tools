@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
+import static java.util.Collections.emptyList;
 import static java.util.Optional.ofNullable;
 
 @Singleton
@@ -418,14 +419,22 @@ public class IoService {
         this.ignoredFiles = ignoredFiles;
     }
 
-    public boolean haveSameContent(List<Path> paths) throws IOException {
+    public List<Path> haveSameContent(List<Path> paths) throws IOException {
+        List<List<Path>> results = new ArrayList<>();
+
         for (int a = 0; a < paths.size(); a++) {
+            Path pathA = paths.get(a);
+            List<Path> duplicates = new ArrayList<>();
+            duplicates.add(pathA);
             for (int b = a + 1; b < paths.size(); b++) {
-                if (haveSameContent(paths.get(a), paths.get(b))) {
-                    return true;
+                Path pathB = paths.get(b);
+                if (haveSameContent(pathA, pathB)) {
+                    duplicates.add(pathB);
                 }
             }
+            results.add(duplicates);
         }
-        return false;
+
+        return results.stream().filter(v -> v.size() > 1).max(Comparator.comparing(List::size)).orElse(emptyList());
     }
 }

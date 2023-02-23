@@ -327,12 +327,15 @@ public class Actions {
                 .map(Map.Entry::getValue)
                 .forEach(paths -> {
                     try {
-                        if (ioService.haveSameContent(paths)) {
-                            ioService.retainOne(paths);
-                        } else {
-                            for (Path path : paths) {
-                                logger.infoStat("different", path);
-                            }
+                        List<Path> same = ioService.haveSameContent(paths);
+                        List<Path> different = new ArrayList<>(paths);
+                        different.removeAll(same);
+
+                        if (!same.isEmpty()) {
+                            ioService.retainOne(same);
+                        }
+                        for (Path path : different) {
+                            logger.infoStat("different", path);
                         }
                     } catch (IOException e) {
                         logger.error("error", e, "Delete error");

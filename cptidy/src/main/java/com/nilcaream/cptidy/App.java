@@ -5,7 +5,9 @@ import com.nilcaream.utilargs.Option;
 import com.nilcaream.utilargs.UtilArgs;
 
 import javax.inject.Inject;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -135,8 +137,15 @@ public class App {
 
     private void fail() {
         logger.error("no input", "Provide input arguments: --source sourceDirectory --target targetDirectory");
-        logger.error("actions", "(--organize|--synchronize) --reorganize --no-duplicates --no-empty");
+        logger.error("actions", "--analyze --organize --synchronize --reorganize --no-duplicates --no-empty");
         logger.error("options", "--copy --move --delete --fast");
+        //noinspection ConstantConditions
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(getClass().getResourceAsStream("/manual.txt")))) {
+            logger.label("");
+            reader.lines().forEach(line -> logger.info("manual", line));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
         System.exit(1);
     }
 
