@@ -19,8 +19,8 @@ public class FileCompare {
 
     private final MessageDigest digest;
 
-    private final byte[] internalBufferA = new byte[16 * 1024 * 1024];
-    private final byte[] internalBufferB = new byte[16 * 1024 * 1024];
+    private byte[] internalBufferA = new byte[16 * 1024 * 1024];
+    private byte[] internalBufferB = new byte[16 * 1024 * 1024];
 
     @Inject
     private Logger logger;
@@ -31,6 +31,13 @@ public class FileCompare {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    public void updateBufferSize(int bufferSize) {
+        int size = Math.max(4 * 1024, 1024 * (int) (Math.ceil(bufferSize / 1024.0)));
+        internalBufferA = new byte[size];
+        internalBufferB = new byte[size];
+        logger.warn("buffer", "File compare buffer size in bytes: " + bufferSize);
     }
 
     public boolean byHash(Path pathA, Path pathB, int bufferSize) throws IOException {

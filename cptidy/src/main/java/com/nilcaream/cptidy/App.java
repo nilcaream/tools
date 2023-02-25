@@ -55,6 +55,9 @@ public class App {
     @Option(alternative = "configuration")
     private String configurationFile;
 
+    @Option(alternative = "buffer")
+    private int bufferSize;
+
     @Inject
     private IoService ioService;
 
@@ -69,6 +72,9 @@ public class App {
 
     @Inject
     private NameResolver nameResolver;
+
+    @Inject
+    private FileCompare fileCompare;
 
     private final List<Statistics> statistics = new ArrayList<>();
 
@@ -109,6 +115,9 @@ public class App {
             logger.info("explicit date", pattern, "=", value);
         });
 
+        if (bufferSize > 0) {
+            fileCompare.updateBufferSize(bufferSize);
+        }
         logger.label("");
     }
 
