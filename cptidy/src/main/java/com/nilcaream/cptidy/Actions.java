@@ -123,6 +123,41 @@ public class Actions {
         return logger.getStatistics();
     }
 
+    public Statistics countEmptyBlocks(String id, Path root, int bufferSize) {
+        logger.info(id, root);
+        logger.resetStatistics(id);
+        marker.reset();
+
+        byte[] buffer = new byte[bufferSize];
+
+        try (Stream<Path> walk = Files.walk(root)) {
+            walk
+                    .filter(Files::isRegularFile)
+                    .peek(marker::mark)
+                    .forEach(file -> {
+                        try {
+                            int count = ioService.countZeroBlocks(file, buffer);
+                            if (count > 0) {
+                                int bytes = count * bufferSize;
+                                long totalSize = ioService.size(file);
+                                int percentage = (int) (100 * bytes / totalSize);
+                                if (percentage > 0) {
+                                    logger.infoStat("empty blocks", file, ":", bytes, "/", totalSize, "bytes", percentage, "%");
+                                }
+                            }
+                        } catch (IOException e) {
+                            logger.error("error", e, "File processing error");
+                        }
+                    });
+        } catch (IOException e) {
+            logger.error("error", e, "Directory processing error");
+        }
+
+        logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
+        logger.label("");
+        return logger.getStatistics();
+    }
+
     public Statistics removeEmpty(String id, Path targetRoot) {
         logger.info(id, targetRoot);
         logger.resetStatistics(id);
@@ -132,7 +167,6 @@ public class Actions {
             walk
                     .filter(Files::isDirectory)
                     .peek(d -> marker.mark(d))
-                    .collect(Collectors.toList())
                     .forEach(directory -> {
                         try {
                             marker.mark(directory);

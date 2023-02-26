@@ -5,6 +5,7 @@ import com.nilcaream.utilargs.Option;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributeView;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.lang.String.format;
+import static java.nio.file.StandardOpenOption.READ;
 import static java.util.Collections.emptyList;
 import static java.util.Optional.ofNullable;
 
@@ -230,6 +232,39 @@ public class IoService {
                 }
             }
         }
+    }
+
+    public int countZeroBlocks(Path path, byte[] buffer) throws IOException {
+        int bytesRead = 0;
+        int counter = 0;
+
+        boolean lastBlock = true;
+
+        try (InputStream inputStream = Files.newInputStream(path, READ)) {
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                boolean hasNonZeroByte = false;
+
+                for (int i = 0; i < bytesRead; i++) {
+                    if (buffer[i] != 0) {
+                        hasNonZeroByte = true;
+                        break;
+                    }
+                }
+
+                if (!hasNonZeroByte) {
+                    counter++;
+                }
+
+                if (bytesRead < buffer.length) {
+                    if (!lastBlock) {
+                        logger.warn("not-full", path, "Bytes read < buffer size", buffer.length);
+                    }
+                    lastBlock = false;
+                }
+            }
+        }
+
+        return counter;
     }
 
     private String removeCopySuffix(String text) {

@@ -15,6 +15,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
 import static java.util.Collections.emptyList;
@@ -51,6 +52,9 @@ public class App {
 
     @Option(alternative = "test")
     private boolean test;
+
+    @Option(alternative = "count-zeros")
+    private boolean countZeros;
 
     @Option(alternative = "configuration")
     private String configurationFile;
@@ -95,8 +99,8 @@ public class App {
 
         logger.label("");
         logger.info("Arguments", String.join(" ", args));
-        logger.info("Sources", hasSource() ? String.join(", ", sourceDirectories) : "");
-        logger.info("Target", hasTarget() ? targetDirectory : "");
+        logger.info("Sources", hasSource() ? sourceDirectories.stream().map(this::asPath).map(Path::toString).collect(Collectors.joining(" ")) : "");
+        logger.info("Target", hasTarget() ? asPath(targetDirectory) : "");
         logger.info("Options", opt("verbose", verbose), opt("copy", ioService.isCopy()), opt("move", ioService.isMove()), opt("delete", ioService.isDelete()), opt("fast", ioService.isFast()), opt("time", ioService.isTime()));
         logger.info("Actions", opt("analyze", analyze), opt("organize", organize), opt("reorganize", reorganize), opt("no-duplicates", removeDuplicates), opt("synchronize", synchronize), opt("no-empty", removeEmpty));
 
@@ -172,7 +176,13 @@ public class App {
         } else {
             long time = currentTimeMillis();
             try {
-                if (analyze) {
+                if (countZeros) {
+                    require(true, false);
+
+                    sourceDirectories.stream()
+                            .map(this::asPath)
+                            .forEach(source -> statistics.add(actions.countEmptyBlocks("count-zeros", source, fileCompare.getInternalBufferSize())));
+                } else if (analyze) {
                     require(true, false);
 
                     sourceDirectories.stream()
@@ -266,6 +276,7 @@ public class App {
                     logger.getErrors().forEach(e -> logger.info("error", e));
                 }
                 logger.label("");
+                logger.info("", "buffer size in bytes", fileCompare.getInternalBufferSize());
                 logger.info("", "total time", (currentTimeMillis() - time) / 1000, "seconds");
             }
         }

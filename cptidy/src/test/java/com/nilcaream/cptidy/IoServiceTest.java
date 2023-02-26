@@ -734,4 +734,62 @@ class IoServiceTest {
         assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isNotEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
         assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isNotEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
     }
+
+
+    @Test
+    void shouldCountZeroBlocks1() throws IOException {
+        // given
+        byte[] buffer = new byte[4];
+        Path pathA = Files.createTempFile("cptidy-", ".tmp");
+        io.write(pathA, new byte[]{
+                0, 0, 0, 0,
+                2, 2, 2, 2,
+                0, 0, 1, 1,
+                0
+        });
+
+        // when
+        int actual = underTest.countZeroBlocks(pathA, buffer);
+
+        // then
+        assertThat(actual).isEqualTo(2);
+    }
+
+    @Test
+    void shouldCountZeroBlocks2() throws IOException {
+        // given
+        byte[] buffer = new byte[4];
+        Path pathA = Files.createTempFile("cptidy-", ".tmp");
+        io.write(pathA, new byte[]{
+                0, 0, 0, 0,
+                2, 2, 2, 2,
+                0, 0, 0, 1,
+                6
+        });
+
+        // when
+        int actual = underTest.countZeroBlocks(pathA, buffer);
+
+        // then
+        assertThat(actual).isEqualTo(1);
+    }
+
+    @Test
+    void shouldCountZeroBlocks3() throws IOException {
+        // given
+        byte[] buffer = new byte[4];
+        Path pathA = Files.createTempFile("cptidy-", ".tmp");
+        io.write(pathA, new byte[]{
+                5, 0, 0, 0,
+                2, 2, 2, 2,
+                0, 0, 0, 1
+        });
+
+        // when
+        int actual = underTest.countZeroBlocks(pathA, buffer);
+
+        // then
+        assertThat(actual).isEqualTo(0);
+    }
+
 }

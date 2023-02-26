@@ -33,6 +33,12 @@ public class Io {
         return path;
     }
 
+    public Path write(Path path, byte[] bytes) throws IOException {
+        createParentDirectories(path);
+        Files.write(path, bytes, CREATE, TRUNCATE_EXISTING);
+        return path;
+    }
+
     public void copy(Path source, Path target) throws IOException {
         createParentDirectories(target);
         Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
