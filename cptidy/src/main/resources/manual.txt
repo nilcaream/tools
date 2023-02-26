@@ -114,3 +114,16 @@ synchronize
 --- If it has same content, then file timestamps are corrected.
 ---- Source, target or both files attributes can be modified (if file-system supported).
 --- Otherwise source is copied to target.
+
+count-zeros
+
+- Usage: counts files that might be corrupted by having large chunks of zeros.
+- Options: buffer.
+- Implementation details:
+-- Works on source paths only.
+-- Supports multiple source directories. Each is processed independently.
+-- Buffer size is set through buffer option.
+-- Can take long time as all files are read.
+-- Useful scripts for cptidy log file:
+--- grep "EMPTY-BLOCKS" cptidy-20230226-122539.txt | sort -k 6 -nr | head
+--- grep "EMPTY-BLOCKS" cptidy-20230226-122539.txt | sort -k 10 -nr | head
