@@ -740,7 +740,7 @@ class IoServiceTest {
     void shouldCountZeroBlocks1() throws IOException {
         // given
         byte[] buffer = new byte[4];
-        Path pathA = Files.createTempFile("cptidy-", ".tmp");
+        Path pathA = root.resolve("zeros.bin");
         io.write(pathA, new byte[]{
                 0, 0, 0, 0,
                 2, 2, 2, 2,
@@ -759,7 +759,7 @@ class IoServiceTest {
     void shouldCountZeroBlocks2() throws IOException {
         // given
         byte[] buffer = new byte[4];
-        Path pathA = Files.createTempFile("cptidy-", ".tmp");
+        Path pathA = root.resolve("zeros.bin");
         io.write(pathA, new byte[]{
                 0, 0, 0, 0,
                 2, 2, 2, 2,
@@ -778,7 +778,7 @@ class IoServiceTest {
     void shouldCountZeroBlocks3() throws IOException {
         // given
         byte[] buffer = new byte[4];
-        Path pathA = Files.createTempFile("cptidy-", ".tmp");
+        Path pathA = root.resolve("zeros.bin");
         io.write(pathA, new byte[]{
                 5, 0, 0, 0,
                 2, 2, 2, 2,

@@ -1,10 +1,9 @@
 package com.nilcaream.cptidy;
 
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -14,14 +13,9 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
-import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
-import static java.lang.System.nanoTime;
 import static java.nio.file.StandardOpenOption.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,23 +38,14 @@ class FileCompareTest {
 
     private Io io = new Io();
 
-    private List<Path> toDelete = new ArrayList<>();
+    @TempDir
+    private Path root;
 
     @BeforeEach
     void setUp() throws IOException {
-        content = io.read(Paths.get("pom.xml"));
-        assertThat(content).hasSizeGreaterThan(8000);
-        pathA = Files.createTempFile("cptidy-", ".tmp");
-        pathB = Files.createTempFile("cptidy-", ".tmp");
-        toDelete.add(pathA);
-        toDelete.add(pathB);
-    }
-
-    @AfterEach
-    void tearDown() throws IOException {
-        for (Path path : toDelete) {
-            Files.deleteIfExists(path);
-        }
+        content = "0123456789abcdef".repeat(600);
+        pathA = Files.createFile(root.resolve("a.tmp"));
+        pathB = Files.createFile(root.resolve("b.tmp"));
     }
 
     @Test
@@ -341,7 +326,6 @@ class FileCompareTest {
 
     private Path create(Path root, int size, int changeEvery) throws IOException {
         Path file = Files.createTempFile(root, "cptidy-", ".tmp").toAbsolutePath();
-        toDelete.add(file);
 
         try (FileChannel fileChannel = (FileChannel) Files.newByteChannel(file, WRITE, TRUNCATE_EXISTING, READ)) {
             MappedByteBuffer buffer = fileChannel.map(FileChannel.MapMode.READ_WRITE, 0, size);
@@ -356,66 +340,5 @@ class FileCompareTest {
         }
 
         return file;
-    }
-
-    @Disabled
-    void manuallyCheckPerformance() throws IOException {
-        Path rootA = Paths.get("/home/copter/cptidy-work/output/2013-09/copy");
-        Path rootB = Paths.get("/home/copter/cptidy-work/output/2013-09");
-
-        for (Path pathA : Files.list(rootA).sorted().collect(Collectors.toList())) {
-            Path pathB = rootB.resolve(pathA.getFileName());
-            compare(pathA, pathB, 16 * 1024 * 1024);
-        }
-    }
-
-    private void compare(Path pathA, Path pathB, int bufferSize) throws IOException {
-        double size = Files.size(pathA) / (1024.0 * 1024.0);
-
-        System.out.printf("-------- %.3f MB | %d | %s : %s\n", size, bufferSize, pathA, pathB);
-
-        byByteChannel(pathA, pathB, bufferSize, size);
-
-        byHash(pathA, pathB, bufferSize, size);
-        byHash(pathA, pathB, bufferSize, size);
-
-        byteByByte(pathA, pathB, bufferSize, size);
-        byteByByte(pathA, pathB, bufferSize, size);
-
-        byByteChannel(pathA, pathB, bufferSize, size);
-        byByteChannel(pathA, pathB, bufferSize, size);
-
-        byteByByte(pathA, pathB, bufferSize, size);
-        byteByByte(pathA, pathB, bufferSize, size);
-
-        byHash(pathA, pathB, bufferSize, size);
-        byHash(pathA, pathB, bufferSize, size);
-    }
-
-    private void byByteChannel(Path pathA, Path pathB, int bufferSize, double size) throws IOException {
-        boolean result;
-        long time;
-        time = nanoTime();
-        result = underTest.byByteChannel(pathA, pathB, bufferSize);
-        time = nanoTime() - time;
-        System.out.printf("channel %.3f ms %s %.3f MB\n", time / 1000.0, result, size);
-    }
-
-    private void byteByByte(Path pathA, Path pathB, int bufferSize, double size) throws IOException {
-        long time;
-        boolean result;
-        time = nanoTime();
-        result = underTest.byteByByte(pathA, pathB, bufferSize);
-        time = nanoTime() - time;
-        System.out.printf("byByte  %.3f ms %s %.3f MB\n", time / 1000.0, result, size);
-    }
-
-    private void byHash(Path pathA, Path pathB, int bufferSize, double size) throws IOException {
-        long time;
-        boolean result;
-        time = nanoTime();
-        result = underTest.byHash(pathA, pathB, bufferSize);
-        time = nanoTime() - time;
-        System.out.printf("byHash  %.3f ms %s %.3f MB\n", time / 1000.0, result, size);
     }
 }
