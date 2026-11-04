@@ -1,37 +1,31 @@
 package com.nilcaream.cptidy;
 
-import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import static java.nio.file.StandardOpenOption.READ;
 
+// Every result is exact. Each file is read sequentially in large chunks, which keeps seeks rare on an HDD.
 @Singleton
 public class FileCompare {
 
-    private final MessageDigest digest;
+    static final int HEAD_SIZE = 1024 * 1024;
 
     private byte[] internalBufferA = new byte[16 * 1024 * 1024];
     private byte[] internalBufferB = new byte[16 * 1024 * 1024];
-
-    @Inject
-    private Logger logger;
-
-    {
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     public void updateBufferSize(int bufferSize) {
         int size = Math.max(1024, 1024 * (int) (Math.ceil(bufferSize / 1024.0)));
@@ -39,135 +33,79 @@ public class FileCompare {
         internalBufferB = new byte[size];
     }
 
-    public boolean byHash(Path pathA, Path pathB, int bufferSize) throws IOException {
+    // One pair: reads both files alternately, one buffer at a time, and stops at the first difference.
+    public boolean sameContent(Path pathA, Path pathB) throws IOException {
         if (areExplicitlyDifferent(pathA, pathB)) {
             return false;
-        } else {
-            return Arrays.equals(hash(pathA, bufferSize), hash(pathB, bufferSize));
+        }
+        try (InputStream inputStreamA = Files.newInputStream(pathA, READ); InputStream inputStreamB = Files.newInputStream(pathB, READ)) {
+            return sameContent(inputStreamA, inputStreamB);
         }
     }
 
-    public boolean byteByByte(Path pathA, Path pathB, int bufferSize) throws IOException {
-        if (areExplicitlyDifferent(pathA, pathB)) {
-            return false;
-        } else {
-            byte[] bufferA = new byte[bufferSize];
-            byte[] bufferB = new byte[bufferSize];
-
-            return byteByByteWithProvidedBuffers(pathA, pathB, bufferA, bufferB);
+    boolean sameContent(InputStream inputStreamA, InputStream inputStreamB) throws IOException {
+        while (true) {
+            int bytesReadA = inputStreamA.readNBytes(internalBufferA, 0, internalBufferA.length);
+            int bytesReadB = inputStreamB.readNBytes(internalBufferB, 0, internalBufferB.length);
+            if (bytesReadA != bytesReadB || !Arrays.equals(internalBufferA, 0, bytesReadA, internalBufferB, 0, bytesReadB)) {
+                return false;
+            } else if (bytesReadA < internalBufferA.length) {
+                return true;
+            }
         }
     }
 
-    public boolean fast(Path pathA, Path pathB) throws IOException {
-        if (areExplicitlyDifferent(pathA, pathB)) {
-            return false;
-        } else if (Files.size(pathA) < internalBufferA.length) {
-            return byteByByteWithProvidedBuffers(pathA, pathB, internalBufferA, internalBufferB);
-        } else {
-            long fileSize = Files.size(pathA);
-            long bufferSize = internalBufferA.length / 4;
+    // Many files: groups by size, then by a hash of the first megabyte, then by a hash of the whole file.
+    // Each file is read at most twice (its head, then all of it) and only while it still has a possible twin.
+    // Returns the groups of two or more files with the same content, each sorted by path.
+    public List<List<Path>> groupBySameContent(Collection<Path> paths) throws IOException {
+        Map<Long, List<Path>> sizeToPaths = new TreeMap<>();
+        for (Path path : paths) {
+            sizeToPaths.computeIfAbsent(Files.size(path), k -> new ArrayList<>()).add(path);
+        }
 
-            try (FileChannel channelA = (FileChannel) Files.newByteChannel(pathA); FileChannel channelB = (FileChannel) Files.newByteChannel(pathB)) {
-                if (isNotEqual(channelA, channelB, 0, bufferSize)) { // start
-                    logger.infoStat("diff start", pathA, "<->", pathB);
-                    return false;
-                } else if (isNotEqual(channelA, channelB, fileSize - bufferSize, fileSize)) { // end
-                    logger.infoStat("diff end", pathA, "<->", pathB);
-                    return false;
-                } else if (isNotEqual(channelA, channelB, fileSize / 2 - bufferSize, fileSize / 2 + bufferSize)) { // middle
-                    logger.infoStat("diff middle", pathA, "<->", pathB);
-                    return false;
+        List<List<Path>> result = new ArrayList<>();
+        for (Map.Entry<Long, List<Path>> entry : sizeToPaths.entrySet()) {
+            for (List<Path> sameHead : groupByHash(entry.getValue(), HEAD_SIZE)) {
+                if (entry.getKey() <= HEAD_SIZE) {
+                    result.add(sameHead);
+                } else {
+                    result.addAll(groupByHash(sameHead, Long.MAX_VALUE));
                 }
             }
-            return true;
         }
+        return result;
     }
 
-    private boolean isNotEqual(FileChannel channelA, FileChannel channelB, long start, long end) throws IOException {
-        MappedByteBuffer byteBufferA = channelA.map(FileChannel.MapMode.READ_ONLY, start, end - start);
-        MappedByteBuffer byteBufferB = channelB.map(FileChannel.MapMode.READ_ONLY, start, end - start);
-        return !byteBufferA.equals(byteBufferB);
-    }
-
-    public boolean byteByByte(Path pathA, Path pathB, byte[] bufferA, byte[] bufferB) throws IOException {
-        if (areExplicitlyDifferent(pathA, pathB)) {
-            return false;
-        } else {
-            return byteByByteWithProvidedBuffers(pathA, pathB, bufferA, bufferB);
-        }
-    }
-
-    public boolean byteByByte(Path pathA, Path pathB) throws IOException {
-        if (areExplicitlyDifferent(pathA, pathB)) {
-            return false;
-        } else {
-            return byteByByteWithProvidedBuffers(pathA, pathB, internalBufferA, internalBufferB);
-        }
-    }
-
-    private boolean byteByByteWithProvidedBuffers(Path pathA, Path pathB, byte[] bufferA, byte[] bufferB) throws IOException {
-        if (bufferA.length != bufferB.length) {
-            throw new IllegalArgumentException("Buffers have different sizes: " + bufferA.length + " and " + bufferB.length);
-        } else if (bufferA == bufferB) {
-            throw new IllegalArgumentException("Buffers reference the same array");
-        } else {
-            int bytesReadA = 0;
-            int bytesReadB;
-
-            try (InputStream inputStreamA = Files.newInputStream(pathA, READ); InputStream inputStreamB = Files.newInputStream(pathB, READ)) {
-                while (bytesReadA != -1) {
-                    bytesReadA = inputStreamA.read(bufferA);
-                    bytesReadB = inputStreamB.read(bufferB);
-                    if (bytesReadA != bytesReadB) {
-                        return false;
-                    } else {
-                        if (bytesReadA != -1 && !Arrays.equals(bufferA, 0, bytesReadA, bufferB, 0, bytesReadA)) {
-                            return false;
-                        }
-                    }
-                }
+    private List<List<Path>> groupByHash(List<Path> paths, long limit) throws IOException {
+        Map<String, List<Path>> hashToPaths = new LinkedHashMap<>();
+        if (paths.size() > 1) {
+            for (Path path : paths.stream().sorted().toList()) {
+                hashToPaths.computeIfAbsent(hash(path, limit), k -> new ArrayList<>()).add(path);
             }
-
-            return true;
         }
+        return hashToPaths.values().stream().filter(group -> group.size() > 1).toList();
     }
 
-    // https://codereview.stackexchange.com/a/90152
-    public boolean byByteChannel(final Path pathA, final Path pathB, int bufferSize) throws IOException {
-        if (areExplicitlyDifferent(pathA, pathB)) {
-            return false;
-        } else {
-            long size = Files.size(pathA);
-
-            try (FileChannel channelA = (FileChannel) Files.newByteChannel(pathA); FileChannel channelB = (FileChannel) Files.newByteChannel(pathB)) {
-                for (long position = 0; position < size; position += bufferSize) {
-                    MappedByteBuffer bufferA = toBuffer(channelA, position, size, bufferSize);
-                    MappedByteBuffer bufferB = toBuffer(channelB, position, size, bufferSize);
-                    if (!bufferA.equals(bufferB)) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-    }
-
-    private MappedByteBuffer toBuffer(FileChannel channel, long position, long size, long bufferSize) throws IOException {
-        long end = Math.min(size, position + bufferSize);
-        long length = end - position;
-        return channel.map(FileChannel.MapMode.READ_ONLY, position, length);
-    }
-
-    private byte[] hash(Path path, int bufferSize) throws IOException {
+    private String hash(Path path, long limit) throws IOException {
+        MessageDigest digest = sha256();
         try (InputStream inputStream = Files.newInputStream(path, READ)) {
+            long remaining = limit;
             int bytesRead;
-            byte[] buffer = new byte[bufferSize];
-
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                digest.update(buffer, 0, bytesRead);
+            while (remaining > 0 && (bytesRead = inputStream.readNBytes(internalBufferA, 0, (int) Math.min(internalBufferA.length, remaining))) > 0) {
+                digest.update(internalBufferA, 0, bytesRead);
+                remaining -= bytesRead;
             }
         }
-        return digest.digest();
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private static MessageDigest sha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private boolean areExplicitlyDifferent(Path pathA, Path pathB) throws IOException {

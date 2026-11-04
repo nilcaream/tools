@@ -19,7 +19,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static java.lang.String.format;
 import static java.nio.file.StandardOpenOption.READ;
 import static java.util.Collections.emptyList;
 import static java.util.Optional.ofNullable;
@@ -51,15 +50,13 @@ public class IoService {
     @Option(alternative = "time")
     private boolean time = false;
 
-    @Option(alternative = "fast")
-    private boolean fast = false;
-
     private Set<String> ignoredFiles = new HashSet<>();
 
     // 1 - yyyy, 2 - MM, 3 - dd
     private static final Pattern NAME_EXTENSION = Pattern.compile("([12][0-9]{3})([01][0-9])([0123][0-9])-.+");
     private static final Instant DEFAULT_TIMESTAMP = Instant.parse("2000-01-01T12:00:00.00Z");
     private static final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9])*");
+    private static final long MODIFIED_TIME_TOLERANCE_MILLIS = 2000;
 
     public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
         Path result = ofNullable(nameResolver.resolve(source)).map(r -> r.resolve(targetRoot)).orElse(null);
@@ -68,17 +65,15 @@ public class IoService {
     }
 
     public boolean haveSameContent(Path source, Path target) throws IOException {
-        if (fast) {
-            return fileCompare.fast(source, target);
-        } else {
-            return fileCompare.byteByByte(source, target);
-        }
+        return fileCompare.sameContent(source, target);
     }
 
-    public boolean haveSameAttributes(Path source, Path target) throws IOException {
+    // Quick check, as rsync does: same size and modification times within the coarsest file system resolution (FAT family: 2 s).
+    public boolean haveSameSizeAndTime(Path source, Path target) throws IOException {
         assertExists(source, target);
         assertDifferent(source, target);
-        return getAttributes(source).equals(getAttributes(target));
+        long timeDifference = Files.getLastModifiedTime(source).toMillis() - Files.getLastModifiedTime(target).toMillis();
+        return Files.size(source) == Files.size(target) && Math.abs(timeDifference) <= MODIFIED_TIME_TOLERANCE_MILLIS;
     }
 
     private FileTime getCorrectTimestamp(Path path) throws IOException {
@@ -143,12 +138,6 @@ public class IoService {
 
     private String asString(FileTime fileTime) {
         return fileTime.toString().replaceAll("\\.\\d+", "").replaceAll("[TZ]", " ").trim();
-    }
-
-    private String getAttributes(Path path) throws IOException {
-        BasicFileAttributes attr = Files.readAttributes(path, BasicFileAttributes.class);
-        String creation = asString(attr.creationTime());
-        return format("%s/%s %d %s", path.getParent().getFileName().toString(), path.getFileName().toString(), Files.size(path), creation);
     }
 
     public void delete(Path path) throws IOException {
@@ -446,34 +435,11 @@ public class IoService {
         this.copy = copy;
     }
 
-    public boolean isFast() {
-        return fast;
-    }
-
-    public void setFast(boolean fast) {
-        this.fast = fast;
-    }
-
     public void setIgnoredFiles(Set<String> ignoredFiles) {
         this.ignoredFiles = ignoredFiles;
     }
 
     public List<Path> haveSameContent(List<Path> paths) throws IOException {
-        List<List<Path>> results = new ArrayList<>();
-
-        for (int a = 0; a < paths.size(); a++) {
-            Path pathA = paths.get(a);
-            List<Path> duplicates = new ArrayList<>();
-            duplicates.add(pathA);
-            for (int b = a + 1; b < paths.size(); b++) {
-                Path pathB = paths.get(b);
-                if (haveSameContent(pathA, pathB)) {
-                    duplicates.add(pathB);
-                }
-            }
-            results.add(duplicates);
-        }
-
-        return results.stream().filter(v -> v.size() > 1).max(Comparator.comparing(List::size)).orElse(emptyList());
+        return fileCompare.groupBySameContent(paths).stream().max(Comparator.comparing(List::size)).orElse(emptyList());
     }
 }

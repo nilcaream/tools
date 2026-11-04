@@ -16,7 +16,7 @@ analyze
 organize
 
 - Usage: move files from work directories (sources) to vault (target); clean-up work.
-- Options: fast, delete, move.
+- Options: delete, move.
 - Implementation details:
 -- Requires source and target paths.
 -- Supports multiple source directories. Each is processed independently.
@@ -26,13 +26,13 @@ organize
 --- The parent directory, file type and name is not relevant.
 --- If source file and target file are not the same file but have same content, source is marked as a duplicate.
 --- If duplicate is found, then it is deleted if delete option is set.
---- File content comparison is optimized if fast option is set.
+--- File content comparison is exact: both files are read in large sequential chunks until the first difference.
 -- Organize procedure is executed on each source vs. the target.
 --- Valid target path is built for each source file.
 ---- If it is not possible to build target path (unknown file type, invalid name, no exif), then file is ignored.
 ---- If source and target are the same file, then it is logged as ok-location.
 ---- If source and target have same content, then source is deleted
------ Options used: delete, fast.
+----- Options used: delete.
 ---- Otherwise, source is moved to target.
 ----- Unique target file name is created if target already contains a different file.
 ----- Options used: move.
@@ -48,7 +48,7 @@ no-duplicates with sources and target
 
 - Usage: delete files from work directories (sources) that are already present in vault (target); clean-up work.
 - Usage: remove any duplicated files from source if they are present in target; clean-up source.
-- Options: fast, delete
+- Options: delete
 - Implementation details:
 -- No-copies procedure is executed on each source vs. the target.
 --- See implementation details in Organize.
@@ -58,35 +58,36 @@ no-duplicates with sources and target
 no-duplicates with sources only
 
 - Usage: delete duplicated files in each work directory (sources) irrespective of their parent directory; clean-up work.
-- Options: fast, delete
+- Options: delete
 - Implementation details:
 -- No-source-copies procedure is executed on each source.
 --- Each regular file of size > 1kB is scanned.
 --- Files of the same size are grouped.
---- Each group is divided into subgroups of same content files.
+--- Each group is divided into subgroups of same content files: by a SHA-256 of the first 1 MB, then by a SHA-256 of the whole file.
+--- Each file is read at most twice and only while another file may still have the same content.
 --- Subgroup with most files is chosen. Only one file from such subgroup is retained. Others are deleted.
---- Options used: fast, delete
+--- Options used: delete
 -- If no-empty option is set, then no-empty procedure is executed on each source.
 --- See implementation details in Organize.
 
 no-duplicates with target only
 
 - Usage: delete duplicated files from each organized directory in the vault; clean-up vault.
-- Options: fast, delete
+- Options: delete
 - Implementation details:
 -- No-target-copies procedure is executed on the target.
 --- Each target child directory is scanned individually.
 --- Each regular file of size > 1kB is scanned.
 --- Files of the same size are grouped.
 --- Each file within the group is compared with another. If they are the same, one of the files is deleted.
---- Options used: fast, delete
+--- Options used: delete
 -- If no-empty option is set, then no-empty procedure is executed on the target.
 --- See implementation details in Organize.
 
 reorganize
 
 - Usage: reapply the organizing rules on existing vault; clean-up vault.
-- Options: fast, delete, move.
+- Options: delete, move.
 - Implementation details:
 -- Works on source paths only.
 -- Supports multiple source directories. Each is processed independently.
@@ -106,12 +107,12 @@ no-empty
 synchronize
 
 - Usage: synchronizes source vault with target vault.
-- Options: fast, time, copy.
+- Options: time, copy.
 - Implementation details:
 -- Requires a single source and target path.
 -- Each file from source is checked if it exists under the same relative path in target.
---- If it exists and have same file attributes, then it is logged as same attributes.
---- If it has same content, then file timestamps are corrected.
+--- If it exists with the same size and a modification time within 2 seconds, then it is logged as same attributes and its content is not read.
+--- Otherwise, if it has same content, then file timestamps are corrected.
 ---- Source, target or both files attributes can be modified (if file-system supported).
 --- Otherwise source is copied to target.
 

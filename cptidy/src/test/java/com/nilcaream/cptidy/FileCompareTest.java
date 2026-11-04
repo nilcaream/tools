@@ -2,41 +2,31 @@ package com.nilcaream.cptidy;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.InjectMocks;
-import org.mockito.Spy;
-import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
-import static java.lang.System.currentTimeMillis;
-import static java.nio.file.StandardOpenOption.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@ExtendWith(MockitoExtension.class)
 class FileCompareTest {
 
-    @InjectMocks
-    private FileCompare underTest = new FileCompare();
+    private static final int MB = 1024 * 1024;
 
-    @Spy
-    private Logger logger = new Logger();
+    private final FileCompare underTest = new FileCompare();
 
     private Path pathA;
     private Path pathB;
     private String content;
 
-    private byte[] bufferA = new byte[4 * 1024 * 1024];
-    private byte[] bufferB = new byte[4 * 1024 * 1024];
-
-    private Io io = new Io();
+    private final Io io = new Io();
 
     @TempDir
     private Path root;
@@ -109,26 +99,6 @@ class FileCompareTest {
     }
 
     @Test
-    void shouldBeSameForLargeFile2() throws IOException {
-        // given
-        io.write(pathA, content + "a" + content);
-        io.write(pathB, content + "a" + content);
-
-        // then
-        assertComparison(true);
-    }
-
-    @Test
-    void shouldBeSameForLargeFile3() throws IOException {
-        // given
-        io.write(pathA, "a" + content + content);
-        io.write(pathB, "a" + content + content);
-
-        // then
-        assertComparison(true);
-    }
-
-    @Test
     void shouldBeSameForSmallFile() throws IOException {
         // given
         io.write(pathA, "a");
@@ -139,206 +109,144 @@ class FileCompareTest {
     }
 
     @Test
+    void shouldBeSameForEmptyFiles() throws IOException {
+        assertComparison(true);
+    }
+
+    @Test
     void shouldNotFailForNotExistingFile() throws IOException {
         // given
         Files.delete(pathB);
-        assertThat(pathA).exists();
-        assertThat(pathB).doesNotExist();
+
+        // then
+        assertThat(underTest.sameContent(pathA, pathB)).isFalse();
+        assertThat(underTest.sameContent(pathB, pathA)).isFalse();
+    }
+
+    @Test
+    void shouldBeSameForSameLargeFiles() throws IOException {
+        // given
+        byte[] bytes = random(64 * MB, 1);
+        Files.write(pathA, bytes);
+        Files.write(pathB, bytes);
+
+        // then
+        assertComparison(true);
+    }
+
+    @Test
+    void shouldBeDifferentForLargeFilesDifferingAnywhere() throws IOException {
+        for (int offset : new int[]{0, 5 * MB + 3, 20 * MB, 32 * MB, 47 * MB + 11, 64 * MB - 1}) {
+            // given
+            byte[] bytes = random(64 * MB, 2);
+            Files.write(pathA, bytes);
+            bytes[offset]++;
+            Files.write(pathB, bytes);
+
+            // then
+            assertComparison(false);
+        }
+    }
+
+    @Test
+    void shouldBeDifferentForLargeFilesWithZeroedHole() throws IOException {
+        // given
+        byte[] bytes = random(64 * MB, 3);
+        Files.write(pathA, bytes);
+        Arrays.fill(bytes, 20 * MB, 21 * MB, (byte) 0);
+        Files.write(pathB, bytes);
 
         // then
         assertComparison(false);
     }
 
     @Test
-    void shouldFailOnWithArraysOfDifferentSize() throws IOException {
+    void shouldBeSameDespiteShortReads() throws IOException {
         // given
-        byte[] bufferA = new byte[1024];
-        byte[] bufferB = new byte[1025];
-
-        io.write(pathA, content);
-        io.write(pathB, content);
+        byte[] bytes = random(3 * MB + 5, 4);
 
         // then
-        assertThatThrownBy(() -> underTest.byteByByte(pathA, pathB, bufferA, bufferB)).hasMessageContaining("Buffers have different sizes");
+        assertThat(underTest.sameContent(new ByteArrayInputStream(bytes), oneByteAtATime(bytes))).isTrue();
+        assertThat(underTest.sameContent(oneByteAtATime(bytes), new ByteArrayInputStream(bytes))).isTrue();
     }
 
     @Test
-    void shouldFailOnWithSameArrays() throws IOException {
+    void shouldGroupBySameContent() throws IOException {
         // given
-        byte[] buffer = new byte[1024];
+        Path x1 = write("x1", random(2 * MB, 10));
+        Path x2 = write("x2", random(2 * MB, 10));
+        Path x3 = write("x3", random(2 * MB, 10));
+        Path y1 = write("y1", random(2 * MB, 11));
+        Path y2 = write("y2", random(2 * MB, 11));
+        Path other = write("other", random(2 * MB, 12));
+        Path small1 = write("small1", random(1000, 13));
+        Path small2 = write("small2", random(1000, 13));
+        Path smallOther = write("small-other", random(1000, 14));
 
-        io.write(pathA, content);
-        io.write(pathB, content);
+        // when
+        List<List<Path>> actual = underTest.groupBySameContent(List.of(y2, other, x3, small2, x1, smallOther, y1, x2, small1));
 
         // then
-        assertThatThrownBy(() -> underTest.byteByByte(pathA, pathB, buffer, buffer)).hasMessageContaining("Buffers reference the same array");
+        assertThat(actual).containsExactlyInAnyOrder(List.of(x1, x2, x3), List.of(y1, y2), List.of(small1, small2));
     }
 
     @Test
-    void shouldTestFastOnDifferentFilesNearBufferSize1() throws IOException {
+    void shouldNotGroupFilesWithSameHeadButDifferentTail() throws IOException {
         // given
-        int size = underTest.getInternalBufferSize();
-        pathA = create(pathA.getParent(), size - 1, size - 10);
-        pathB = create(pathA.getParent(), size - 1, size);
+        byte[] bytes = random(FileCompare.HEAD_SIZE + 10, 20);
+        Path a = write("a", bytes);
+        bytes[FileCompare.HEAD_SIZE + 5]++;
+        Path b = write("b", bytes);
 
         // then
-        assertThat(underTest.fast(pathA, pathB)).isFalse();
-        assertThat(underTest.fast(pathB, pathA)).isFalse();
+        assertThat(underTest.groupBySameContent(List.of(a, b))).isEmpty();
     }
 
     @Test
-    void shouldTestFastOnDifferentFilesNearBufferSize2() throws IOException {
+    void shouldGroupFilesOfExactlyHeadSize() throws IOException {
         // given
-        int size = underTest.getInternalBufferSize();
-        pathA = create(pathA.getParent(), size, size - 10);
-        pathB = create(pathA.getParent(), size, size);
+        Path a = write("a", random(FileCompare.HEAD_SIZE, 21));
+        Path b = write("b", random(FileCompare.HEAD_SIZE, 21));
+        Path c = write("c", random(FileCompare.HEAD_SIZE, 22));
 
         // then
-        assertThat(underTest.fast(pathA, pathB)).isFalse();
-        assertThat(underTest.fast(pathB, pathA)).isFalse();
+        assertThat(underTest.groupBySameContent(List.of(c, b, a))).containsExactly(List.of(a, b));
     }
 
     @Test
-    void shouldTestFastOnDifferentFilesNearBufferSize3() throws IOException {
-        // given
-        int size = underTest.getInternalBufferSize();
-        pathA = create(pathA.getParent(), size + 1, size - 10);
-        pathB = create(pathA.getParent(), size + 1, size);
+    void shouldUseUpdatedBufferSize() {
+        // when
+        underTest.updateBufferSize(1500);
 
         // then
-        assertThat(underTest.fast(pathA, pathB)).isFalse();
-        assertThat(underTest.fast(pathB, pathA)).isFalse();
+        assertThat(underTest.getInternalBufferSize()).isEqualTo(2048);
     }
 
-    @Test
-    void shouldTestFastOnSameFilesNearBufferSize1() throws IOException {
-        // given
-        int size = underTest.getInternalBufferSize();
-        pathA = create(pathA.getParent(), size - 1, size - 10);
-        pathB = create(pathA.getParent(), size - 1, size - 10);
-
-        // then
-        assertThat(underTest.fast(pathA, pathB)).isTrue();
-        assertThat(underTest.fast(pathB, pathA)).isTrue();
-    }
-
-    @Test
-    void shouldTestFastOnSameFilesNearBufferSize2() throws IOException {
-        // given
-        int size = underTest.getInternalBufferSize();
-        pathA = create(pathA.getParent(), size, size - 10);
-        pathB = create(pathA.getParent(), size, size - 10);
-
-        // then
-        assertThat(underTest.fast(pathA, pathB)).isTrue();
-        assertThat(underTest.fast(pathB, pathA)).isTrue();
-    }
-
-    @Test
-    void shouldTestFastOnSameFilesNearBufferSize3() throws IOException {
-        // given
-        int size = underTest.getInternalBufferSize();
-        pathA = create(pathA.getParent(), size + 1, size - 10);
-        pathB = create(pathA.getParent(), size + 1, size - 10);
-
-        // then
-        assertThat(underTest.fast(pathA, pathB)).isTrue();
-        assertThat(underTest.fast(pathB, pathA)).isTrue();
-    }
-
-    @Test
-    void shouldTestFastOnDifferentFiles() throws IOException {
-        // given
-        pathA = create(pathA.getParent(), 64 * 1024 * 1024, 1024 * 1024);
-        pathB = create(pathA.getParent(), 64 * 1024 * 1024, 128 * 1024 * 1024);
-
-        // then
-        assertThat(underTest.fast(pathA, pathB)).isFalse();
-    }
-
-    @Test
-    void shouldTestFastOnSameFiles() throws IOException {
-        // given
-        pathA = create(pathA.getParent(), 64 * 1024 * 1024, 1024 * 1024);
-        pathB = create(pathA.getParent(), 64 * 1024 * 1024, 1024 * 1024);
-
-        // then
-        assertThat(underTest.fast(pathA, pathB)).isTrue();
-    }
-
-    @Test
-    void shouldTestFastOnSlightlyDifferentFilesStart() throws IOException {
-        // given
-        pathA = create(pathA.getParent(), 64 * 1024 * 1024, 2 * 1024 * 1024);
-        pathB = create(pathA.getParent(), 64 * 1024 * 1024, 2 * 1024 * 1024 + 1);
-
-        // then
-        assertThat(underTest.fast(pathA, pathB)).isFalse();
-    }
-
-    @Test
-    void shouldTestFastOnSlightlyDifferentFilesMiddle() throws IOException {
-        // given
-        pathA = create(pathA.getParent(), 64 * 1024 * 1024, 32 * 1024 * 1024);
-        pathB = create(pathA.getParent(), 64 * 1024 * 1024, 32 * 1024 * 1024 + 1);
-
-        // then
-        assertThat(underTest.fast(pathA, pathB)).isFalse();
-    }
-
-    @Test
-    void shouldTestFastOnSlightlyDifferentFilesEnd() throws IOException {
-        // given
-        pathA = create(pathA.getParent(), 64 * 1024 * 1024, 63 * 1024 * 1024);
-        pathB = create(pathA.getParent(), 64 * 1024 * 1024, 63 * 1024 * 1024 + 1);
-
-        // then
-        assertThat(underTest.fast(pathA, pathB)).isFalse();
-    }
-
-    void assertComparison(boolean expected) throws IOException {
-        Random random = new Random(currentTimeMillis());
-        for (int i = 2; i <= 1024 * 1024; i *= 2) {
-            System.out.printf("Assert buffer %d for %s %s\n", i, pathA, pathB);
-            assertThat(underTest.byByteChannel(pathA, pathB, i)).isEqualTo(expected);
-            assertThat(underTest.byByteChannel(pathB, pathA, i)).isEqualTo(expected);
-            assertThat(underTest.byHash(pathA, pathB, i)).isEqualTo(expected);
-            assertThat(underTest.byHash(pathB, pathA, i)).isEqualTo(expected);
-            assertThat(underTest.byteByByte(pathA, pathB, i)).isEqualTo(expected);
-            assertThat(underTest.byteByByte(pathB, pathA, i)).isEqualTo(expected);
-            assertThat(underTest.byteByByte(pathA, pathB, bufferA, bufferB)).isEqualTo(expected);
-            assertThat(underTest.byteByByte(pathB, pathA, bufferA, bufferB)).isEqualTo(expected);
-
-            assertThat(underTest.byteByByte(pathA, pathB)).isEqualTo(expected);
-            assertThat(underTest.byteByByte(pathB, pathA)).isEqualTo(expected);
-
-            random.nextBytes(bufferB);
-            assertThat(underTest.byteByByte(pathB, pathA, bufferA, bufferB)).isEqualTo(expected);
-
-            assertThat(underTest.byteByByte(pathA, pathB, bufferB, bufferA)).isEqualTo(expected);
-            assertThat(underTest.byteByByte(pathB, pathA, bufferA, bufferB)).isEqualTo(expected);
-
-            random.nextBytes(bufferA);
+    private void assertComparison(boolean expected) throws IOException {
+        for (int bufferSize : new int[]{1024, 64 * 1024, 16 * MB}) {
+            underTest.updateBufferSize(bufferSize);
+            assertThat(underTest.sameContent(pathA, pathB)).as("buffer %d", bufferSize).isEqualTo(expected);
+            assertThat(underTest.sameContent(pathB, pathA)).as("buffer %d", bufferSize).isEqualTo(expected);
+            assertThat(underTest.groupBySameContent(List.of(pathB, pathA))).as("buffer %d", bufferSize).isEqualTo(expected ? List.of(List.of(pathA, pathB)) : List.of());
         }
-        assertThat(underTest.fast(pathB, pathA)).isEqualTo(expected);
-        assertThat(underTest.fast(pathA, pathB)).isEqualTo(expected);
     }
 
-    private Path create(Path root, int size, int changeEvery) throws IOException {
-        Path file = Files.createTempFile(root, "cptidy-", ".tmp").toAbsolutePath();
+    private Path write(String name, byte[] bytes) throws IOException {
+        return Files.write(root.resolve(name), bytes);
+    }
 
-        try (FileChannel fileChannel = (FileChannel) Files.newByteChannel(file, WRITE, TRUNCATE_EXISTING, READ)) {
-            MappedByteBuffer buffer = fileChannel.map(FileChannel.MapMode.READ_WRITE, 0, size);
-            byte b = 0;
-            for (int i = 0; i < size; i++, b++) {
-                if (i % changeEvery == 0) {
-                    buffer.put((byte) (b + 1));
-                } else {
-                    buffer.put(b);
-                }
+    private static byte[] random(int size, int seed) {
+        byte[] bytes = new byte[size];
+        new Random(seed).nextBytes(bytes);
+        return bytes;
+    }
+
+    private static InputStream oneByteAtATime(byte[] bytes) {
+        return new FilterInputStream(new ByteArrayInputStream(bytes)) {
+            @Override
+            public int read(byte[] b, int off, int len) throws IOException {
+                return super.read(b, off, Math.min(len, 1));
             }
-        }
-
-        return file;
+        };
     }
 }

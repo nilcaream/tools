@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -178,6 +179,26 @@ class ActionsFileSystemTest {
     }
 
     @Test
+    void shouldKeepLargeFilesThatDifferOnlyByZeroedHole() throws IOException {
+        // given
+        ioService.setDelete(true);
+        byte[] bytes = bytes(64 * 1024 * 1024, 7);
+        Files.write(source.resolve("20200101-clip-1.mp4"), bytes);
+        Files.write(target.resolve("20200101-clip-1.mp4"), bytes);
+        java.util.Arrays.fill(bytes, 20 * 1024 * 1024, 21 * 1024 * 1024, (byte) 0);
+        Files.write(source.resolve("20200101-clip.mp4"), bytes);
+        Files.write(target.resolve("20200101-clip.mp4"), bytes);
+
+        // when
+        actions.removeDuplicatesGlobally("no-source-copies", source);
+        actions.removeDuplicatesPerDirectory("no-target-copies", target);
+
+        // then
+        assertThat(relative(source)).containsExactly("20200101-clip-1.mp4", "20200101-clip.mp4");
+        assertThat(relative(target)).containsExactly("20200101-clip-1.mp4", "20200101-clip.mp4");
+    }
+
+    @Test
     void shouldRemoveDuplicatesPerDirectory() throws IOException {
         // given
         ioService.setDelete(true);
@@ -261,6 +282,54 @@ class ActionsFileSystemTest {
     }
 
     @Test
+    void shouldSynchronizeSameSizeEditByModifiedTime() throws IOException {
+        // given
+        ioService.setCopy(true);
+        Path edited = write(source.resolve("2020-01").resolve("edited.jpg"), 2048, 4);
+        Path old = write(target.resolve("2020-01").resolve("edited.jpg"), 2048, 5);
+        Files.setLastModifiedTime(old, FileTime.from(Files.getLastModifiedTime(edited).toInstant().minusSeconds(3)));
+
+        // when
+        actions.synchronize("synchronize", source, target);
+
+        // then
+        assertThat(relative(target)).containsExactlyInAnyOrder("2020-01/edited.jpg", "2020-01/edited-0.jpg");
+        assertThat(content(target.resolve("2020-01").resolve("edited-0.jpg"))).isEqualTo(bytes(2048, 4));
+    }
+
+    @Test
+    void shouldSkipSynchronizationWithoutReadingContentWhenSizeAndTimeMatch() throws IOException {
+        // given
+        ioService.setCopy(true);
+        Path sourceFile = write(source.resolve("2020-01").resolve("same.jpg"), 2048, 4);
+        Path targetFile = write(target.resolve("2020-01").resolve("same.jpg"), 2048, 5);
+        Files.setLastModifiedTime(targetFile, FileTime.from(Files.getLastModifiedTime(sourceFile).toInstant().minusMillis(1900)));
+
+        // when
+        Statistics statistics = actions.synchronize("synchronize", source, target);
+
+        // then
+        assertThat(relative(target)).containsExactly("2020-01/same.jpg");
+        assertThat(statistics.getData().get("SAME-ATTRIBUTES").getCount()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldNotCopyFileWithSameContentAndDifferentTime() throws IOException {
+        // given
+        ioService.setCopy(true);
+        Path sourceFile = write(source.resolve("2020-01").resolve("same.jpg"), 2048, 4);
+        Path targetFile = write(target.resolve("2020-01").resolve("same.jpg"), 2048, 4);
+        Files.setLastModifiedTime(targetFile, FileTime.from(Files.getLastModifiedTime(sourceFile).toInstant().minusSeconds(3600)));
+
+        // when
+        Statistics statistics = actions.synchronize("synchronize", source, target);
+
+        // then
+        assertThat(relative(target)).containsExactly("2020-01/same.jpg");
+        assertThat(statistics.getData().get("SAME-CONTENT").getCount()).isEqualTo(1);
+    }
+
+    @Test
     void shouldCountEmptyBlocks() throws IOException {
         // given
         byte[] bytes = bytes(4096, 1);
@@ -297,9 +366,9 @@ class ActionsFileSystemTest {
         return bytes;
     }
 
-    private static void write(Path path, int size, int seed) throws IOException {
+    private static Path write(Path path, int size, int seed) throws IOException {
         Files.createDirectories(path.getParent());
-        Files.write(path, bytes(size, seed));
+        return Files.write(path, bytes(size, seed));
     }
 
     private static byte[] content(Path path) throws IOException {

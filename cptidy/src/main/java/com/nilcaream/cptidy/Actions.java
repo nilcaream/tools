@@ -27,9 +27,6 @@ public class Actions {
     @Inject
     private Marker marker;
 
-    @Inject
-    private IoTest ioTest;
-
     public Statistics organize(String id, Path sourceRoot, Path targetRoot) {
         logger.info(id, sourceRoot, "->", targetRoot);
         logger.resetStatistics(id);
@@ -199,11 +196,11 @@ public class Actions {
                     if (ioService.isSameFile(source, target)) {
                         // source file is exactly the same file as target
                         logger.error("same file", source);
-                    } else if (Files.exists(target) && ioService.haveSameAttributes(source, target)) {
-                        // same parent name, file name, size and create date time
+                    } else if (Files.exists(target) && ioService.haveSameSizeAndTime(source, target)) {
+                        // unchanged: content is not read
                         logger.stat("same attributes", source);
                     } else if (ioService.haveSameContent(source, target)) {
-                        // same content
+                        // same size, different modification time, same content
                         logger.infoStat("same content", source, "=", target);
                         ioService.fixTimestamps(source, target);
                     } else {
@@ -338,10 +335,6 @@ public class Actions {
         logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
         return logger.getStatistics();
-    }
-
-    public void test(Path root) throws IOException {
-        ioTest.test2(root, 128 * 1024 * 1024, 16 * 1024 * 1024);
     }
 
     public Statistics removeDuplicatesGlobally(String id, Path root) {

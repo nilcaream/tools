@@ -66,24 +66,8 @@ class IoServiceTest {
         // given
         Path source = io.write(root.resolve("file1.txt"), "test");
         Path target = io.write(root.resolve("file2.txt"), "test");
-        given(fileCompare.byteByByte(source, target)).willReturn(true);
-        given(fileCompare.byteByByte(target, source)).willReturn(false);
-
-        // then
-        assertThat(underTest.haveSameContent(source, target)).isTrue();
-        assertThat(underTest.haveSameContent(target, source)).isFalse();
-    }
-
-    @Test
-    void shouldHaveSameContentFast() throws IOException {
-        // given
-        Path source = io.write(root.resolve("file1.txt"), "test");
-        Path target = io.write(root.resolve("file2.txt"), "test");
-        given(fileCompare.fast(source, target)).willReturn(true);
-        given(fileCompare.fast(target, source)).willReturn(false);
-
-        // when
-        underTest.setFast(true);
+        given(fileCompare.sameContent(source, target)).willReturn(true);
+        given(fileCompare.sameContent(target, source)).willReturn(false);
 
         // then
         assertThat(underTest.haveSameContent(source, target)).isTrue();
@@ -558,15 +542,12 @@ class IoServiceTest {
         Path path2 = io.write(root.resolve("tes").resolve("test-file-jp"), "testX");
         Path path3 = io.write(root.resolve("test").resolve("test-file-j"), "AAAAA");
         Path path4 = io.write(root.resolve("test").resolve("test-file-zzz"), "testX");
-        given(fileCompare.byteByByte(path1, path2)).willReturn(true);
-        given(fileCompare.byteByByte(path1, path3)).willReturn(false);
-        given(fileCompare.byteByByte(path1, path4)).willReturn(true);
-        given(fileCompare.byteByByte(path2, path3)).willReturn(false);
-        given(fileCompare.byteByByte(path2, path4)).willReturn(true);
-        given(fileCompare.byteByByte(path3, path4)).willReturn(false);
+        Path path5 = io.write(root.resolve("test").resolve("test-file-yyy"), "AAAAA");
+        List<Path> paths = List.of(path1, path2, path3, path4, path5);
+        given(fileCompare.groupBySameContent(paths)).willReturn(List.of(List.of(path3, path5), List.of(path1, path2, path4)));
 
         // when
-        List<Path> actual = underTest.haveSameContent(List.of(path1, path2, path3, path4));
+        List<Path> actual = underTest.haveSameContent(paths);
 
         // then
         assertThat(actual).containsOnly(path1, path2, path4);
