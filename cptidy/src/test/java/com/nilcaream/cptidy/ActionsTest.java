@@ -12,6 +12,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -143,21 +145,13 @@ class ActionsTest {
         given(ioService.size(duplicate2)).willReturn(1025L);
         given(ioService.size(notDuplicated)).willReturn(1025L);
 
-        given(ioService.isSameFile(duplicate1, notDuplicated)).willReturn(false);
-        given(ioService.isSameFile(duplicate2, notDuplicated)).willReturn(false);
-
-        given(ioService.haveSameContent(duplicate1, notDuplicated)).willReturn(false);
-        given(ioService.haveSameContent(duplicate2, notDuplicated)).willReturn(false);
-
-        given(ioService.isSameFile(duplicate1, duplicate2)).willReturn(false);
-
-        given(ioService.haveSameContent(duplicate1, duplicate2)).willReturn(true);
+        given(ioService.groupBySameContent(argThat(paths -> paths != null && Set.copyOf(paths).equals(Set.of(duplicate1, duplicate2, notDuplicated)))))
+                .willReturn(List.of(List.of(duplicate1, duplicate2)));
 
         // when
         underTest.removeDuplicatesPerDirectory("id", root);
 
         // then
-        verify(ioService, times(1)).deleteOne(duplicate1, duplicate2);
-        verifyNoMoreInteractions(ioService);
+        verify(ioService, times(1)).retainOne(List.of(duplicate1, duplicate2));
     }
 }

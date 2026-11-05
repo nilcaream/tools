@@ -20,7 +20,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.nio.file.StandardOpenOption.READ;
-import static java.util.Collections.emptyList;
 import static java.util.Optional.ofNullable;
 
 @Singleton
@@ -169,18 +168,6 @@ public class IoService {
                 }
 
             }
-        }
-    }
-
-    public void deleteOne(Path fileA, Path fileB) throws IOException {
-        assertExists(fileA, fileB);
-        assertDifferent(fileA, fileB);
-
-        Path path = selectToDelete(fileA, fileB);
-        logger.infoStat("delete", path);
-
-        if (delete) {
-            io.delete(path);
         }
     }
 
@@ -439,7 +426,33 @@ public class IoService {
         this.ignoredFiles = ignoredFiles;
     }
 
-    public List<Path> haveSameContent(List<Path> paths) throws IOException {
-        return fileCompare.groupBySameContent(paths).stream().max(Comparator.comparing(List::size)).orElse(emptyList());
+    // Every set of two or more different files with the same content. A path that is the same file as an earlier path
+    // of its set (a hard link, a symlink or one file reached twice) is left out, so that no set can delete its own keeper.
+    public List<List<Path>> groupBySameContent(List<Path> paths) throws IOException {
+        List<List<Path>> result = new ArrayList<>();
+        for (List<Path> group : fileCompare.groupBySameContent(paths)) {
+            List<Path> distinct = new ArrayList<>();
+            for (Path path : group) {
+                Path same = findSameFile(path, distinct);
+                if (same == null) {
+                    distinct.add(path);
+                } else {
+                    logger.infoStat("same file", path, "=", same);
+                }
+            }
+            if (distinct.size() > 1) {
+                result.add(distinct);
+            }
+        }
+        return result;
+    }
+
+    private Path findSameFile(Path path, List<Path> paths) throws IOException {
+        for (Path other : paths) {
+            if (io.isSameFile(path, other)) {
+                return other;
+            }
+        }
+        return null;
     }
 }

@@ -110,8 +110,8 @@ class IoServiceTest {
         Path shorter2 = io.write(root.resolve("333.dat"), "test");
 
         // when
-        underTest.deleteOne(longer1, shorter1);
-        underTest.deleteOne(shorter2, longer2);
+        underTest.retainOne(List.of(longer1, shorter1));
+        underTest.retainOne(List.of(shorter2, longer2));
 
         // then
         assertThat(longer1).exists();
@@ -130,8 +130,8 @@ class IoServiceTest {
         Path shorter2 = io.write(root.resolve("333-1.dat"), "test");
 
         // when
-        underTest.deleteOne(longer1, shorter1);
-        underTest.deleteOne(shorter2, longer2);
+        underTest.retainOne(List.of(longer1, shorter1));
+        underTest.retainOne(List.of(shorter2, longer2));
 
         // then
         assertThat(longer1).exists();
@@ -150,8 +150,8 @@ class IoServiceTest {
         Path shorter2 = io.write(root.resolve("file.txt22"), "test");
 
         // when
-        underTest.deleteOne(longer1, shorter1);
-        underTest.deleteOne(shorter2, longer2);
+        underTest.retainOne(List.of(longer1, shorter1));
+        underTest.retainOne(List.of(shorter2, longer2));
 
         // then
         assertThat(longer1).exists();
@@ -171,8 +171,8 @@ class IoServiceTest {
         Path later2 = io.write(root.resolve("file2.txt22"), "test");
 
         // when
-        underTest.deleteOne(later1, earlier1);
-        underTest.deleteOne(earlier2, later2);
+        underTest.retainOne(List.of(later1, earlier1));
+        underTest.retainOne(List.of(earlier2, later2));
 
         // then
         assertThat(earlier1).doesNotExist();
@@ -191,8 +191,8 @@ class IoServiceTest {
         Path earlier2 = io.write(root.resolve("file1.txt22"), "test");
 
         // when
-        underTest.deleteOne(file1, earlier1);
-        underTest.deleteOne(earlier2, file2);
+        underTest.retainOne(List.of(file1, earlier1));
+        underTest.retainOne(List.of(earlier2, file2));
 
         // then
         assertThat(earlier1).exists();
@@ -547,10 +547,28 @@ class IoServiceTest {
         given(fileCompare.groupBySameContent(paths)).willReturn(List.of(List.of(path3, path5), List.of(path1, path2, path4)));
 
         // when
-        List<Path> actual = underTest.haveSameContent(paths);
+        List<List<Path>> actual = underTest.groupBySameContent(paths);
 
         // then
-        assertThat(actual).containsOnly(path1, path2, path4);
+        assertThat(actual).containsExactly(List.of(path3, path5), List.of(path1, path2, path4));
+    }
+
+    @Test
+    void shouldLeaveOutSameFileFromSetsWithSameContent() throws IOException {
+        // given
+        Path path1 = io.write(root.resolve("link").resolve("a"), "testX");
+        Path path2 = Files.createLink(root.resolve("link").resolve("b"), path1);
+        Path path3 = io.write(root.resolve("link").resolve("c"), "testX");
+        Path path4 = io.write(root.resolve("link").resolve("d"), "AAAAA");
+        Path path5 = Files.createLink(root.resolve("link").resolve("e"), path4);
+        List<Path> paths = List.of(path1, path2, path3, path4, path5);
+        given(fileCompare.groupBySameContent(paths)).willReturn(List.of(List.of(path1, path2, path3), List.of(path4, path5)));
+
+        // when
+        List<List<Path>> actual = underTest.groupBySameContent(paths);
+
+        // then
+        assertThat(actual).containsExactly(List.of(path1, path3));
     }
 
     @Test
@@ -635,7 +653,7 @@ class IoServiceTest {
         underTest.setDelete(true);
 
         // when
-        assertThatThrownBy(() -> underTest.deleteOne(path1, path2)).hasMessageContaining("Should provide different paths");
+        assertThatThrownBy(() -> underTest.retainOne(List.of(path1, path2))).hasMessageContaining("Should provide different paths");
     }
 
     @Test

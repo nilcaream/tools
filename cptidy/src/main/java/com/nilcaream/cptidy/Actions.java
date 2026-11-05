@@ -10,8 +10,12 @@ import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -92,19 +96,13 @@ public class Actions {
                             .filter(e -> e.getValue().size() > 1)
                             .map(Map.Entry::getValue)
                             .forEach(paths -> {
-                                for (int a = 0; a < paths.size(); a++) {
-                                    for (int b = a + 1; b < paths.size(); b++) {
-                                        Path file = paths.get(a);
-                                        Path copy = paths.get(b);
-                                        try {
-                                            if (!ioService.isSameFile(file, copy) && ioService.haveSameContent(file, copy)) {
-                                                logger.infoStat("duplicate", file, "=", copy);
-                                                ioService.deleteOne(file, copy);
-                                            }
-                                        } catch (IOException e) {
-                                            logger.error("error", e, file, ":", copy);
-                                        }
+                                try {
+                                    for (List<Path> same : ioService.groupBySameContent(paths)) {
+                                        logger.infoStat("duplicate", same.get(0), "=", same.subList(1, same.size()));
+                                        ioService.retainOne(same);
                                     }
+                                } catch (IOException e) {
+                                    logger.error("error", e, paths);
                                 }
                             });
                 } catch (IOException e) {
@@ -302,26 +300,16 @@ public class Actions {
         }
 
         logger.info("source", source);
+        Map<Long, List<Path>> sizeToSourcePaths = new TreeMap<>();
         try (Stream<Path> walk = Files.walk(source)) {
             walk.filter(Files::isRegularFile).forEach(sourceFile -> {
                 try {
                     logger.stat("total", sourceFile);
-
                     marker.mark(sourceFile);
                     long size = ioService.size(sourceFile);
-                    List<Path> targetFiles = sizeToPaths.get(size);
-                    boolean unique = true;
-                    if (targetFiles != null) {
-                        for (Path targetFile : targetFiles) {
-                            if (!ioService.isSameFile(sourceFile, targetFile) && ioService.haveSameContent(sourceFile, targetFile)) {
-                                logger.infoStat("duplicate", sourceFile, "=", targetFile);
-                                ioService.delete(sourceFile);
-                                unique = false;
-                                break;
-                            }
-                        }
-                    }
-                    if (unique) {
+                    if (sizeToPaths.containsKey(size)) {
+                        sizeToSourcePaths.computeIfAbsent(size, k -> new ArrayList<>()).add(sourceFile);
+                    } else {
                         logger.infoStat("unique", sourceFile);
                     }
                 } catch (IOException e) {
@@ -331,6 +319,32 @@ public class Actions {
         } catch (IOException e) {
             logger.error("error", e, "Directory processing error");
         }
+
+        // each file of a size found on both sides is read at most twice, however many files share that size
+        sizeToSourcePaths.forEach((size, sourceFiles) -> {
+            try {
+                Set<Path> sourceSet = new HashSet<>(sourceFiles);
+                Set<Path> unique = new TreeSet<>(sourceFiles);
+                List<Path> all = Stream.concat(sourceFiles.stream(), sizeToPaths.get(size).stream()).distinct().collect(Collectors.toList());
+                for (List<Path> same : ioService.groupBySameContent(all)) {
+                    Path targetFile = same.stream().filter(p -> !sourceSet.contains(p)).findFirst().orElse(null);
+                    if (targetFile != null) {
+                        for (Path sourceFile : same) {
+                            if (sourceSet.contains(sourceFile)) {
+                                logger.infoStat("duplicate", sourceFile, "=", targetFile);
+                                ioService.delete(sourceFile);
+                                unique.remove(sourceFile);
+                            }
+                        }
+                    }
+                }
+                for (Path sourceFile : unique) {
+                    logger.infoStat("unique", sourceFile);
+                }
+            } catch (IOException e) {
+                logger.error("error", e, "File processing error");
+            }
+        });
 
         logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
@@ -366,12 +380,10 @@ public class Actions {
                 .map(Map.Entry::getValue)
                 .forEach(paths -> {
                     try {
-                        List<Path> same = ioService.haveSameContent(paths);
                         List<Path> different = new ArrayList<>(paths);
-                        different.removeAll(same);
-
-                        if (!same.isEmpty()) {
+                        for (List<Path> same : ioService.groupBySameContent(paths)) {
                             ioService.retainOne(same);
+                            different.removeAll(same);
                         }
                         for (Path path : different) {
                             logger.infoStat("different", path);

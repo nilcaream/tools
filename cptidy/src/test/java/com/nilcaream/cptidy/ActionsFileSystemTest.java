@@ -161,7 +161,7 @@ class ActionsFileSystemTest {
     }
 
     @Test
-    void shouldRemoveDuplicatesGloballyOnlyInLargestSetOfSameSize() throws IOException {
+    void shouldRemoveDuplicatesGloballyInEverySetOfSameSize() throws IOException {
         // given
         ioService.setDelete(true);
         write(source.resolve("a1.jpg"), 2048, 1);
@@ -169,13 +169,53 @@ class ActionsFileSystemTest {
         write(source.resolve("a3.jpg"), 2048, 1);
         write(source.resolve("b1.jpg"), 2048, 2);
         write(source.resolve("b2.jpg"), 2048, 2);
+        write(source.resolve("c1.jpg"), 2048, 3);
 
         // when
         actions.removeDuplicatesGlobally("no-source-copies", source);
 
         // then
         // names of the same length: the last in order is kept
-        assertThat(relative(source)).containsExactlyInAnyOrder("a3.jpg", "b1.jpg", "b2.jpg");
+        assertThat(relative(source)).containsExactlyInAnyOrder("a3.jpg", "b2.jpg", "c1.jpg");
+    }
+
+    @Test
+    void shouldKeepHardLinkedFileWhenRemovingDuplicatesGlobally() throws IOException {
+        // given
+        ioService.setDelete(true);
+        Path file = write(source.resolve("x.jpg"), 2048, 1);
+        Files.createLink(source.resolve("x-link.jpg"), file);
+        write(source.resolve("x-1.jpg"), 2048, 1);
+
+        // when
+        actions.removeDuplicatesGlobally("no-source-copies", source);
+
+        // then
+        // the link is the same file as x.jpg, so the set is x-1.jpg and one of the two names
+        assertThat(relative(source)).containsExactlyInAnyOrder("x-link.jpg", "x.jpg");
+    }
+
+    @Test
+    void shouldDeleteEverySourceCopyOfTargetFilesOfSameSize() throws IOException {
+        // given
+        ioService.setDelete(true);
+        write(target.resolve("2020-01").resolve("a.jpg"), 2048, 1);
+        write(target.resolve("2020-02").resolve("b.jpg"), 2048, 2);
+        write(target.resolve("2020-02").resolve("b-1.jpg"), 2048, 2);
+        write(source.resolve("a-copy.bin"), 2048, 1);
+        write(source.resolve("a-copy-2.bin"), 2048, 1);
+        write(source.resolve("b-copy.bin"), 2048, 2);
+        write(source.resolve("c.bin"), 2048, 3);
+        write(source.resolve("c-copy.bin"), 2048, 3);
+
+        // when
+        Statistics statistics = actions.findCopies("no-copies", source, target);
+
+        // then
+        // copies among source files alone are not copies of the target
+        assertThat(relative(source)).containsExactlyInAnyOrder("c.bin", "c-copy.bin");
+        assertThat(relative(target)).hasSize(3);
+        assertThat(statistics.getData().get("UNIQUE").getCount()).isEqualTo(2);
     }
 
     @Test
@@ -226,7 +266,26 @@ class ActionsFileSystemTest {
         Statistics statistics = actions.removeDuplicatesPerDirectory("no-target-copies", target);
 
         // then
+        // the dry run reports exactly what a real run deletes
         assertThat(files(root)).isEqualTo(before);
+        assertThat(statistics.getData().get("DELETE").getCount()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldRemoveDuplicatesPerDirectoryInEverySetOfSameSize() throws IOException {
+        // given
+        ioService.setDelete(true);
+        write(target.resolve("d").resolve("x.jpg"), 2048, 1);
+        write(target.resolve("d").resolve("x-1.jpg"), 2048, 1);
+        write(target.resolve("d").resolve("x-2.jpg"), 2048, 1);
+        write(target.resolve("d").resolve("y.jpg"), 2048, 2);
+        write(target.resolve("d").resolve("y-1.jpg"), 2048, 2);
+
+        // when
+        Statistics statistics = actions.removeDuplicatesPerDirectory("no-target-copies", target);
+
+        // then
+        assertThat(relative(target)).containsExactlyInAnyOrder("d/x.jpg", "d/y.jpg");
         assertThat(statistics.getData().get("DELETE").getCount()).isEqualTo(3);
     }
 
