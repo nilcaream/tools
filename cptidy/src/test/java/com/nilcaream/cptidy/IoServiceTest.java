@@ -837,10 +837,11 @@ class IoServiceTest {
         });
 
         // when
-        int actual = underTest.countZeroBlocks(pathA, buffer);
+        long actual = underTest.countZeroBytes(pathA, buffer);
 
         // then
-        assertThat(actual).isEqualTo(2);
+        // the last block is one byte long
+        assertThat(actual).isEqualTo(5);
     }
 
     @Test
@@ -856,10 +857,10 @@ class IoServiceTest {
         });
 
         // when
-        int actual = underTest.countZeroBlocks(pathA, buffer);
+        long actual = underTest.countZeroBytes(pathA, buffer);
 
         // then
-        assertThat(actual).isEqualTo(1);
+        assertThat(actual).isEqualTo(4);
     }
 
     @Test
@@ -874,7 +875,7 @@ class IoServiceTest {
         });
 
         // when
-        int actual = underTest.countZeroBlocks(pathA, buffer);
+        long actual = underTest.countZeroBytes(pathA, buffer);
 
         // then
         assertThat(actual).isEqualTo(0);

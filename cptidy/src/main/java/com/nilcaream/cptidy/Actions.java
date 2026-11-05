@@ -148,11 +148,10 @@ public class Actions {
                     .peek(marker::mark)
                     .forEach(file -> {
                         try {
-                            int count = ioService.countZeroBlocks(file, buffer);
-                            if (count > 0) {
-                                int bytes = count * bufferSize;
+                            long bytes = ioService.countZeroBytes(file, buffer);
+                            if (bytes > 0) {
                                 long totalSize = ioService.size(file);
-                                int percentage = (int) (100 * bytes / totalSize);
+                                long percentage = 100 * bytes / totalSize;
                                 if (percentage > 0) {
                                     logger.infoStat("empty blocks", file, ":", bytes, "/", totalSize, "bytes", percentage, "%");
                                 }

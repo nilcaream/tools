@@ -252,14 +252,13 @@ public class IoService {
         }
     }
 
-    public int countZeroBlocks(Path path, byte[] buffer) throws IOException {
-        int bytesRead = 0;
-        int counter = 0;
-
-        boolean lastBlock = true;
+    // Bytes in blocks of buffer size that hold only zeros; the last, shorter block counts at its own length.
+    public long countZeroBytes(Path path, byte[] buffer) throws IOException {
+        int bytesRead;
+        long counter = 0;
 
         try (InputStream inputStream = Files.newInputStream(path, READ)) {
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
+            while ((bytesRead = inputStream.readNBytes(buffer, 0, buffer.length)) > 0) {
                 boolean hasNonZeroByte = false;
 
                 for (int i = 0; i < bytesRead; i++) {
@@ -270,14 +269,7 @@ public class IoService {
                 }
 
                 if (!hasNonZeroByte) {
-                    counter++;
-                }
-
-                if (bytesRead < buffer.length) {
-                    if (!lastBlock) {
-                        logger.warn("not-full", path, "Bytes read < buffer size", buffer.length);
-                    }
-                    lastBlock = false;
+                    counter += bytesRead;
                 }
             }
         }

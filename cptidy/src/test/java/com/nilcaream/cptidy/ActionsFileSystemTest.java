@@ -451,6 +451,20 @@ class ActionsFileSystemTest {
     }
 
     @Test
+    void shouldReportFileWithMoreThan21MegabytesOfZeros() throws IOException {
+        // given
+        byte[] bytes = bytes(48 * 1024 * 1024, 1);
+        java.util.Arrays.fill(bytes, 8 * 1024 * 1024, 40 * 1024 * 1024, (byte) 0);
+        Files.write(source.resolve("damaged.mp4"), bytes);
+
+        // when
+        Statistics statistics = actions.countEmptyBlocks("count-zeros", source, 1024 * 1024);
+
+        // then
+        assertThat(statistics.getData().get("EMPTY-BLOCKS").getCount()).isEqualTo(1);
+    }
+
+    @Test
     void shouldLoadConfiguration() throws IOException {
         // given
         Path file = root.resolve("cptidy.json");
