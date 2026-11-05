@@ -3,7 +3,6 @@ package com.nilcaream.cptidy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -38,8 +37,8 @@ public class ExplicitDates {
 
     private DateString resolve(String match, Path input) throws IOException {
         if (match.equals("FILE_DATE")) {
-            BasicFileAttributes attr = Files.readAttributes(input, BasicFileAttributes.class);
-            return new DateString(attr.creationTime().toString().substring(0, 10));
+            // modification time: on Linux the creation time is the birth time of this copy, and no copy keeps it
+            return new DateString(Files.getLastModifiedTime(input).toString().substring(0, 10));
         } else {
             return new DateString(match);
         }

@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -109,6 +110,21 @@ class ActionsFileSystemTest {
         // then
         assertThat(relative(source)).isEmpty();
         assertThat(relative(target)).containsExactly("2020-01/20200102-a.jpg");
+    }
+
+    @Test
+    void shouldResolveTargetFromModificationTimeNamedInFile() throws IOException {
+        // given
+        // the birth time of a file on Linux is the time of this copy, so only the modification time can match the name
+        Path file = write(source.resolve("video-2015-06.mp4"), 2048, 1);
+        Files.setLastModifiedTime(file, FileTime.from(Instant.parse("2015-06-20T10:00:00Z")));
+
+        // when
+        Path match = ioService.buildMatchingTarget(file, target);
+
+        // then
+        assertThat(match).isEqualTo(target.resolve("2015-06").resolve(match.getFileName()));
+        assertThat(match.getFileName().toString()).startsWith("20150620");
     }
 
     @Test

@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -256,9 +255,8 @@ public class Actions {
                 }
                 for (Path file : files) {
                     marker.mark(file);
-                    BasicFileAttributes attr = Files.readAttributes(file, BasicFileAttributes.class);
                     Path match = ioService.buildMatchingTarget(file, target);
-                    String fileDateTime = attr.creationTime().toString().replaceAll("[TZ]", " ").trim();
+                    String fileDateTime = Files.getLastModifiedTime(file).toString().replaceAll("[TZ]", " ").trim();
                     if (match == null) {
                         logger.infoStat("failure", file, ":", "unknown", "|", fileDateTime);
                     } else {

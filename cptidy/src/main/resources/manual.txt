@@ -7,11 +7,11 @@ analyze
 -- Supports multiple source directories. Each is processed independently.
 -- No files are copied, deleted or modified.
 -- Tries to build valid target path for each file.
--- Resolves parent directory name based on file creation data attribute.
+-- Resolves parent directory name based on file modification date attribute.
 -- Output:
 --- failure - it is not possible to build valid target path for file,
---- all match - target path is valid and it matches file creation date,
---- partial match - target path is valid but it does not match file creation date.
+--- all match - target path is valid and it matches file modification date,
+--- partial match - target path is valid but it does not match file modification date.
 
 organize
 

@@ -5,7 +5,7 @@ import javax.inject.Singleton;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.text.SimpleDateFormat;
 import java.util.Objects;
 import java.util.Set;
@@ -57,12 +57,13 @@ public class NameResolver {
             result = new Result(date.asShort(), prefixDate(status, nameExtension, matcher));
         } else if (EXTENSIONS.contains(extension)) {
             DateString date = exifService.getDate(input);
-            BasicFileAttributes attr = Files.readAttributes(input, BasicFileAttributes.class);
-            String fileDateTime = attr.creationTime().toString().substring(0, 7);
+            // modification time: on Linux the creation time is the birth time of this copy, and no copy keeps it
+            FileTime modifiedTime = Files.getLastModifiedTime(input);
+            String fileDateTime = modifiedTime.toString().substring(0, 7);
             if (date != null) {
                 result = new Result(date.asShort(), exifDate(status, nameExtension, date.asLong()));
             } else if (input.getFileName().toString().contains(fileDateTime)) {
-                String longDate = attr.creationTime().toString().substring(0, 10);
+                String longDate = modifiedTime.toString().substring(0, 10);
                 date = new DateString(longDate);
                 result = new Result(date.asShort(), fileDate(status, nameExtension.replace(longDate, "-").replace(fileDateTime, "-"), date.asLong()));
             } else if (DIRECTORY_DATE.matcher(input.getParent().getFileName().toString()).matches()) {

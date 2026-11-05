@@ -111,7 +111,7 @@ public class IoService {
     }
 
     private FileTime getCorrectTimestamp(Path path) throws IOException {
-        FileTime fileTime = getCreateTime(path);
+        FileTime fileTime = getModifiedTime(path);
         String name = path.getFileName().toString();
         String date = fileTime.toString().substring(0, 10).replace("-", ""); // yyyy-MM-ddTHH:mm:ss -> yyyyMMdd
         return name.contains(date) ? fileTime : null;
@@ -149,12 +149,13 @@ public class IoService {
         }
     }
 
-    private FileTime getCreateTime(Path path) throws IOException {
-        return Files.readAttributes(path, BasicFileAttributes.class).creationTime();
+    // modification time: on Linux the creation time is the birth time of this copy, and no copy keeps it
+    private FileTime getModifiedTime(Path path) throws IOException {
+        return Files.getLastModifiedTime(path);
     }
 
     private void setTimestamp(Path path, FileTime fileTime) throws IOException {
-        String from = asString(getCreateTime(path));
+        String from = asString(getModifiedTime(path));
         String to = asString(fileTime);
         if (fileTime.toInstant().equals(DEFAULT_TIMESTAMP)) {
             logger.infoStat("time-default", path, ":", from, "->", to);
