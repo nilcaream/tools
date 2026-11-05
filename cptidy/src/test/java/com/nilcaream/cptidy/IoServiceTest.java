@@ -23,6 +23,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
@@ -79,12 +80,15 @@ class IoServiceTest {
         // given
         underTest.setDelete(true);
         Path source = io.write(root.resolve("file1.txt"), "test");
+        Path kept = io.write(root.resolve("file2.txt"), "test");
+        underTest.recordStates(List.of(source, kept));
 
         // when
-        underTest.delete(source);
+        underTest.deleteCopy(source, kept);
 
         // then
         assertThat(source).doesNotExist();
+        assertThat(kept).exists();
     }
 
     @Test
@@ -92,12 +96,97 @@ class IoServiceTest {
         // given
         underTest.setDelete(false);
         Path source = io.write(root.resolve("file1.txt"), "test");
+        Path kept = io.write(root.resolve("file2.txt"), "test");
+        underTest.recordStates(List.of(source, kept));
 
         // when
-        underTest.delete(source);
+        underTest.deleteCopy(source, kept);
 
         // then
         assertThat(source).exists();
+    }
+
+    @Test
+    void shouldNotDeleteCopyThatChangedAfterCompare() throws IOException {
+        // given
+        underTest.setDelete(true);
+        Path source = io.write(root.resolve("file1.txt"), "test");
+        Path kept = io.write(root.resolve("file2.txt"), "test");
+        underTest.recordStates(List.of(source, kept));
+        Files.setLastModifiedTime(source, FileTime.fromMillis(Files.getLastModifiedTime(source).toMillis() + 1000));
+
+        // when
+        underTest.deleteCopy(source, kept);
+
+        // then
+        assertThat(source).exists();
+        assertThat(logger.getErrors()).hasSize(1);
+    }
+
+    @Test
+    void shouldNotDeleteCopyWhenKeptFileChangedOrIsGone() throws IOException {
+        // given
+        underTest.setDelete(true);
+        Path source1 = io.write(root.resolve("file1.txt"), "test");
+        Path kept1 = io.write(root.resolve("file2.txt"), "test");
+        Path source2 = io.write(root.resolve("file3.txt"), "test");
+        Path kept2 = io.write(root.resolve("file4.txt"), "test");
+        underTest.recordStates(List.of(source1, kept1, source2, kept2));
+        io.write(kept1, "tes");
+        Files.delete(kept2);
+
+        // when
+        underTest.deleteCopy(source1, kept1);
+        underTest.deleteCopy(source2, kept2);
+
+        // then
+        assertThat(source1).exists();
+        assertThat(source2).exists();
+    }
+
+    @Test
+    void shouldNotDeleteFileThatWasNeverCompared() throws IOException {
+        // given
+        underTest.setDelete(true);
+        Path longer = io.write(root.resolve("4444.txt"), "test");
+        Path shorter = io.write(root.resolve("333.txt"), "test");
+
+        // when
+        underTest.retainOne(List.of(longer, shorter));
+
+        // then
+        assertThat(shorter).exists();
+    }
+
+    @Test
+    void shouldBeDryRunWithoutApplyOptions() {
+        assertThat(underTest.isDryRun()).isTrue();
+        underTest.setTime(true);
+        assertThat(underTest.isDryRun()).isFalse();
+    }
+
+    @Test
+    void shouldMoveToOtherFileSystemOnlyAfterCopyReadsBackSame() throws IOException {
+        // given
+        underTest.setMove(true);
+        Path other = Jimfs.newFileSystem(Configuration.unix()).getPath("other").toAbsolutePath();
+        Path file1 = io.write(root.resolve("file1.txt"), "test");
+        Path file2 = io.write(root.resolve("file2.txt"), "test");
+        Path target1 = other.resolve("file1.txt");
+        Path target2 = other.resolve("file2.txt");
+        given(nameResolver.buildUniquePath(any())).willAnswer(invocation -> invocation.getArgument(0));
+        given(fileCompare.sameContent(file1, target1)).willReturn(true);
+        given(fileCompare.sameContent(file2, target2)).willReturn(false);
+
+        // when
+        underTest.move(file1, target1);
+        assertThatThrownBy(() -> underTest.move(file2, target2)).hasMessageContaining("Copy differs from its source");
+
+        // then
+        assertThat(file1).doesNotExist();
+        assertThat(target1).hasContent("test");
+        assertThat(file2).exists();
+        assertThat(target2).doesNotExist();
     }
 
     @Test
@@ -110,8 +199,8 @@ class IoServiceTest {
         Path shorter2 = io.write(root.resolve("333.dat"), "test");
 
         // when
-        underTest.retainOne(List.of(longer1, shorter1));
-        underTest.retainOne(List.of(shorter2, longer2));
+        retainOne(List.of(longer1, shorter1));
+        retainOne(List.of(shorter2, longer2));
 
         // then
         assertThat(longer1).exists();
@@ -130,8 +219,8 @@ class IoServiceTest {
         Path shorter2 = io.write(root.resolve("333-1.dat"), "test");
 
         // when
-        underTest.retainOne(List.of(longer1, shorter1));
-        underTest.retainOne(List.of(shorter2, longer2));
+        retainOne(List.of(longer1, shorter1));
+        retainOne(List.of(shorter2, longer2));
 
         // then
         assertThat(longer1).exists();
@@ -150,8 +239,8 @@ class IoServiceTest {
         Path shorter2 = io.write(root.resolve("file.txt22"), "test");
 
         // when
-        underTest.retainOne(List.of(longer1, shorter1));
-        underTest.retainOne(List.of(shorter2, longer2));
+        retainOne(List.of(longer1, shorter1));
+        retainOne(List.of(shorter2, longer2));
 
         // then
         assertThat(longer1).exists();
@@ -171,8 +260,8 @@ class IoServiceTest {
         Path later2 = io.write(root.resolve("file2.txt22"), "test");
 
         // when
-        underTest.retainOne(List.of(later1, earlier1));
-        underTest.retainOne(List.of(earlier2, later2));
+        retainOne(List.of(later1, earlier1));
+        retainOne(List.of(earlier2, later2));
 
         // then
         assertThat(earlier1).doesNotExist();
@@ -191,8 +280,8 @@ class IoServiceTest {
         Path earlier2 = io.write(root.resolve("file1.txt22"), "test");
 
         // when
-        underTest.retainOne(List.of(file1, earlier1));
-        underTest.retainOne(List.of(earlier2, file2));
+        retainOne(List.of(file1, earlier1));
+        retainOne(List.of(earlier2, file2));
 
         // then
         assertThat(earlier1).exists();
@@ -491,7 +580,7 @@ class IoServiceTest {
         underTest.setDelete(true);
 
         // when
-        underTest.retainOne(List.of(path1, path2, path3));
+        retainOne(List.of(path1, path2, path3));
 
         // then
         assertThat(path1).exists();
@@ -508,7 +597,7 @@ class IoServiceTest {
         underTest.setDelete(true);
 
         // when
-        underTest.retainOne(List.of(path3, path1, path2));
+        retainOne(List.of(path3, path1, path2));
 
         // then
         assertThat(path1).exists();
@@ -526,7 +615,7 @@ class IoServiceTest {
         underTest.setDelete(true);
 
         // when
-        underTest.retainOne(List.of(path3, path1, path4, path2));
+        retainOne(List.of(path3, path1, path4, path2));
 
         // then
         assertThat(path1).doesNotExist();
@@ -580,7 +669,7 @@ class IoServiceTest {
         Path path4 = io.write(root.resolve("test").resolve("test-file.zzz"), "testX");
 
         // when
-        underTest.retainOne(List.of(path3, path1, path4, path2));
+        retainOne(List.of(path3, path1, path4, path2));
 
         // then
         assertThat(path1).exists();
@@ -791,4 +880,9 @@ class IoServiceTest {
         assertThat(actual).isEqualTo(0);
     }
 
+    // the actions delete only files whose content they compared
+    private void retainOne(List<Path> paths) throws IOException {
+        underTest.recordStates(paths);
+        underTest.retainOne(paths);
+    }
 }

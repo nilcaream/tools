@@ -9,9 +9,14 @@ import com.drew.metadata.Tag;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.channels.FileChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -44,9 +49,24 @@ public class Io {
         Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
     }
 
-    public void move(Path source, Path target) throws IOException {
+    // Returns false, with nothing changed, when source and target are on different file systems.
+    public boolean rename(Path source, Path target) throws IOException {
         createParentDirectories(target);
-        Files.move(source, target);
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw new FileAlreadyExistsException(target.toString());
+        }
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+            return true;
+        } catch (AtomicMoveNotSupportedException e) {
+            return false;
+        }
+    }
+
+    public void flush(Path path) throws IOException {
+        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) {
+            channel.force(true);
+        }
     }
 
     private void createParentDirectories(Path path) throws IOException {

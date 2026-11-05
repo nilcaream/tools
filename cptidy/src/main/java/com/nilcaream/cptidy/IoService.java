@@ -51,6 +51,11 @@ public class IoService {
 
     private Set<String> ignoredFiles = new HashSet<>();
 
+    private final Map<Path, FileState> comparedStates = new HashMap<>();
+
+    private record FileState(long size, FileTime lastModifiedTime) {
+    }
+
     // 1 - yyyy, 2 - MM, 3 - dd
     private static final Pattern NAME_EXTENSION = Pattern.compile("([12][0-9]{3})([01][0-9])([0123][0-9])-.+");
     private static final Instant DEFAULT_TIMESTAMP = Instant.parse("2000-01-01T12:00:00.00Z");
@@ -64,7 +69,37 @@ public class IoService {
     }
 
     public boolean haveSameContent(Path source, Path target) throws IOException {
+        recordStates(List.of(source, target));
         return fileCompare.sameContent(source, target);
+    }
+
+    // Size and modification time of each file, taken before its content is read, so that a copy is deleted only while
+    // neither it nor its kept twin has changed since they were compared.
+    void recordStates(Collection<Path> paths) throws IOException {
+        for (Path path : paths) {
+            if (Files.exists(path)) {
+                comparedStates.put(path, stateOf(path));
+            }
+        }
+    }
+
+    private FileState stateOf(Path path) throws IOException {
+        BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
+        return new FileState(attributes.size(), attributes.lastModifiedTime());
+    }
+
+    private boolean unchangedSinceCompared(Path copy, Path kept) throws IOException {
+        for (Path path : List.of(copy, kept)) {
+            FileState state = comparedStates.get(path);
+            if (!Files.exists(path)) {
+                logger.error("missing", path, "is gone, so", copy, "is kept");
+                return false;
+            } else if (state == null || !state.equals(stateOf(path))) {
+                logger.error("changed", path, "changed after it was compared, so", copy, "is kept");
+                return false;
+            }
+        }
+        return true;
     }
 
     // Quick check, as rsync does: same size and modification times within the coarsest file system resolution (FAT family: 2 s).
@@ -139,12 +174,19 @@ public class IoService {
         return fileTime.toString().replaceAll("\\.\\d+", "").replaceAll("[TZ]", " ").trim();
     }
 
-    public void delete(Path path) throws IOException {
-        logger.infoStat("delete", path);
+    public void deleteCopy(Path copy, Path kept) throws IOException {
+        assertDifferent(copy, kept);
+        if (unchangedSinceCompared(copy, kept)) {
+            logger.infoStat("delete", copy);
 
-        if (delete) {
-            io.delete(path);
+            if (delete) {
+                io.delete(copy);
+            }
         }
+    }
+
+    public boolean isDryRun() {
+        return !delete && !move && !copy && !time;
     }
 
     private void assertExists(Path... paths) {
@@ -200,7 +242,7 @@ public class IoService {
         for (Path path : paths) {
             if (path == best) {
                 logger.infoStat("retain", path, ": score", pathToScore.get(path));
-            } else {
+            } else if (unchangedSinceCompared(path, best)) {
                 logger.infoStat("delete", path, ": score", pathToScore.get(path));
 
                 if (delete) {
@@ -306,8 +348,15 @@ public class IoService {
             logger.infoStat("move", source, ">", target);
         }
 
-        if (move) {
-            io.move(source, target);
+        if (move && !io.rename(source, target)) {
+            // another file system: the source is deleted only after its copy reads back the same
+            io.copy(source, target);
+            io.flush(target);
+            if (!fileCompare.sameContent(source, target)) {
+                io.delete(target);
+                throw new IOException("Copy differs from its source, source kept " + source + " > " + target);
+            }
+            io.delete(source);
         }
     }
 
@@ -429,6 +478,7 @@ public class IoService {
     // Every set of two or more different files with the same content. A path that is the same file as an earlier path
     // of its set (a hard link, a symlink or one file reached twice) is left out, so that no set can delete its own keeper.
     public List<List<Path>> groupBySameContent(List<Path> paths) throws IOException {
+        recordStates(paths);
         List<List<Path>> result = new ArrayList<>();
         for (List<Path> group : fileCompare.groupBySameContent(paths)) {
             List<Path> distinct = new ArrayList<>();

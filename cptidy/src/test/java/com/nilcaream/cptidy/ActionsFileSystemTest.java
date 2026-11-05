@@ -196,6 +196,52 @@ class ActionsFileSystemTest {
     }
 
     @Test
+    void shouldSkipSymlinksAndGoOn() throws IOException {
+        // given
+        ioService.setDelete(true);
+        ioService.setMove(true);
+        Path file = write(source.resolve("x.jpg"), 2048, 1);
+        Files.createSymbolicLink(source.resolve("x-link.jpg"), file);
+        Files.createSymbolicLink(source.resolve("dir-link"), target);
+        // the longer name would be kept: a link to a file outside, in place of the only real copy
+        Path outside = write(root.resolve("outside").resolve("z.jpg"), 2048, 3);
+        write(source.resolve("z.jpg"), 2048, 3);
+        Files.createSymbolicLink(source.resolve("z-longer.jpg"), outside);
+        write(source.resolve("y.jpg"), 2048, 2);
+        write(source.resolve("y-1.jpg"), 2048, 2);
+        write(target.resolve("y.jpg"), 2048, 2);
+
+        // when
+        actions.removeDuplicatesGlobally("no-source-copies", source);
+        actions.removeDuplicatesPerDirectory("no-target-copies", source);
+        actions.removeEmpty("no-empty", source);
+
+        // then
+        assertThat(relative(source)).containsExactlyInAnyOrder("x.jpg", "x-link.jpg", "y.jpg", "z.jpg", "z-longer.jpg");
+        assertThat(source.resolve("dir-link")).isSymbolicLink();
+        assertThat(relative(target)).containsExactly("y.jpg");
+        assertThat(logger.getErrors()).isEmpty();
+    }
+
+    @Test
+    void shouldReorganizeEachFileOnce() throws IOException {
+        // given
+        ioService.setMove(true);
+        // enough names that the directory is read in several batches, so a lazy walk would meet the new month directories
+        for (int i = 0; i < 2000; i++) {
+            String month = String.format("20%02d%02d", 10 + i % 30, 1 + i / 30 % 12);
+            write(source.resolve(month + "01-a-" + i + ".jpg"), 16, i);
+        }
+
+        // when
+        Statistics statistics = actions.organize("reorganize", source, source);
+
+        // then
+        assertThat(statistics.getData().get("TOTAL").getCount()).isEqualTo(2000);
+        assertThat(statistics.getData().get("MOVE").getCount()).isEqualTo(2000);
+    }
+
+    @Test
     void shouldDeleteEverySourceCopyOfTargetFilesOfSameSize() throws IOException {
         // given
         ioService.setDelete(true);

@@ -17,6 +17,8 @@ public class Logger {
 
     private final org.slf4j.Logger logger = LoggerFactory.getLogger(getClass());
 
+    private static final int MAX_ERRORS = 16;
+
     private final List<String> errors = new ArrayList<>();
     private final List<String> warns = new ArrayList<>();
 
@@ -87,8 +89,15 @@ public class Logger {
 
     private void storeError(Object... messages) {
         errors.add(asString(messages));
-        if (errors.size() > 16) {
-            throw new IllegalStateException("Exceeded max error count");
+        if (errors.size() > MAX_ERRORS) {
+            throw new ErrorLimitException();
+        }
+    }
+
+    // Stops the run: an action that catches it logs one more error, which throws it again.
+    public static class ErrorLimitException extends RuntimeException {
+        ErrorLimitException() {
+            super("Exceeded max error count " + MAX_ERRORS);
         }
     }
 

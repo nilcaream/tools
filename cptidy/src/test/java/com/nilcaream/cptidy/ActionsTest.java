@@ -15,6 +15,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
@@ -77,8 +79,45 @@ class ActionsTest {
 
         // then
         verify(ioService, times(1)).move(matchToMove, matchToMoveResolved);
-        verify(ioService, times(1)).delete(matchToDelete);
+        verify(ioService, times(1)).deleteCopy(matchToDelete, matchToDeleteResolved);
         verifyNoMoreInteractions(ioService);
+    }
+
+    @Test
+    void shouldGoOnAfterUnexpectedErrorInOneFile() throws IOException {
+        // given
+        Path source = root.resolve("source");
+        Path target = root.resolve("target");
+        Path crash = io.write(source.resolve("a"), "test");
+        Path match = io.write(source.resolve("b"), "test");
+        Path matchResolved = target.resolve("2020-01").resolve("b.jpg");
+        given(ioService.buildMatchingTarget(crash, target)).willThrow(IllegalArgumentException.class);
+        given(ioService.buildMatchingTarget(match, target)).willReturn(matchResolved);
+
+        // when
+        underTest.organize("org", source, target);
+
+        // then
+        verify(ioService, times(1)).move(match, matchResolved);
+        assertThat(logger.getErrors()).hasSize(1);
+    }
+
+    @Test
+    void shouldStopActionAtErrorLimit() throws IOException {
+        // given
+        Path source = root.resolve("source");
+        Path target = root.resolve("target");
+        for (int i = 0; i < 20; i++) {
+            Path path = io.write(source.resolve("file-" + (char) ('a' + i)), "test");
+            // the files after the limit are never reached
+            lenient().when(ioService.buildMatchingTarget(path, target)).thenThrow(IOException.class);
+        }
+
+        // when
+        assertThatThrownBy(() -> underTest.organize("org", source, target)).isInstanceOf(Logger.ErrorLimitException.class);
+
+        // then
+        assertThat(logger.getErrors()).hasSize(17);
     }
 
 //    @Test

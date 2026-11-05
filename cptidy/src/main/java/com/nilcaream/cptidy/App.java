@@ -85,7 +85,9 @@ public class App {
         UtilArgs.bind(args, app.ioService);
 
         app.initialize(args);
-        app.execute();
+        if (!app.execute()) {
+            System.exit(1);
+        }
     }
 
     private void initialize(String[] args) throws IOException {
@@ -166,8 +168,9 @@ public class App {
         }
     }
 
-    private void execute() throws IOException {
+    private boolean execute() throws IOException {
         long time = currentTimeMillis();
+        Logger.ErrorLimitException stopped = null;
         try {
             if (countZeros) {
                 require(true, false);
@@ -255,6 +258,10 @@ public class App {
             } else {
                 fail();
             }
+        } catch (Logger.ErrorLimitException e) {
+            // the action that stopped did not return its statistics
+            statistics.add(logger.getStatistics());
+            stopped = e;
         } finally {
             statistics.stream().filter(Statistics::hasData).forEach(stats -> {
                 logger.label(stats.getId());
@@ -271,7 +278,14 @@ public class App {
             logger.label("");
             logger.info("", "buffer size in bytes", fileCompare.getInternalBufferSize());
             logger.info("", "total time", (currentTimeMillis() - time) / 1000, "seconds");
+            if (stopped != null) {
+                logger.info("stopped", stopped.getMessage(), "- the run ended before its last file");
+            }
+            if (ioService.isDryRun()) {
+                logger.info("dry run", "nothing changed: no --copy, --move, --delete or --time given");
+            }
         }
+        return stopped == null;
     }
 
     private String opt(String key, boolean value) {

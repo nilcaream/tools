@@ -36,36 +36,53 @@ public class Actions {
         logger.resetStatistics(id);
         marker.reset();
 
+        // listed before any file moves, so that reorganize never meets a file it has already moved
+        List<Path> sources = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(sourceRoot)) {
-            walk.filter(Files::isRegularFile).forEach(source -> {
-                try {
-                    marker.mark(source);
-                    Path target = ioService.buildMatchingTarget(source, targetRoot);
-                    //noinspection StatementWithEmptyBody
-                    if (target == null) {
-                        // file is not matching target pattern or has no exif date
-                    } else if (ioService.isSameFile(source, target)) {
-                        // file is already in target location
-                        logger.infoStat("ok location", source);
-                    } else if (ioService.haveSameContent(source, target)) {
-                        // duplicate detected
-                        logger.infoStat("duplicate", source, "=", target);
-                        ioService.delete(source);
-                    } else {
-                        // just move to target
-                        ioService.move(source, target);
-                    }
-                } catch (IOException e) {
-                    logger.error("error", e, "File processing error");
-                }
-            });
-        } catch (IOException e) {
+            sources = walk.filter(this::isFile).sorted().collect(Collectors.toList());
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "Directory processing error");
+        }
+
+        for (Path source : sources) {
+            try {
+                marker.mark(source);
+                Path target = ioService.buildMatchingTarget(source, targetRoot);
+                //noinspection StatementWithEmptyBody
+                if (target == null) {
+                    // file is not matching target pattern or has no exif date
+                } else if (ioService.isSameFile(source, target)) {
+                    // file is already in target location
+                    logger.infoStat("ok location", source);
+                } else if (ioService.haveSameContent(source, target)) {
+                    // duplicate detected
+                    logger.infoStat("duplicate", source, "=", target);
+                    ioService.deleteCopy(source, target);
+                } else {
+                    // just move to target
+                    ioService.move(source, target);
+                }
+            } catch (IOException | RuntimeException e) {
+                logger.error("error", e, "File processing error");
+            }
         }
 
         logger.info(id, "time", marker.getElapsed() / 1000, "seconds");
         logger.label("");
         return logger.getStatistics();
+    }
+
+    // A symlink is skipped, never followed: it is not a file of the tree being tidied.
+    private boolean isFile(Path path) {
+        if (Files.isSymbolicLink(path)) {
+            logger.info("skip link", path);
+            return false;
+        }
+        return Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS);
+    }
+
+    private boolean isDirectory(Path path) {
+        return Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);
     }
 
     public Statistics removeDuplicatesPerDirectory(String id, Path root) {
@@ -74,14 +91,14 @@ public class Actions {
         marker.reset();
 
         try (Stream<Path> walk = Files.walk(root)) {
-            walk.filter(Files::isDirectory).forEach(directory -> {
+            walk.filter(this::isDirectory).forEach(directory -> {
                 try {
                     marker.mark(directory);
                     int[] count = new int[]{0};
                     Map<Long, List<Path>> sizeToPaths = new HashMap<>();
                     try (Stream<Path> list = Files.list(directory)) {
                         list
-                                .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
+                                .filter(this::isFile)
                                 .forEach(path -> {
                                     count[0]++;
                                     long size = ioService.size(path);
@@ -101,15 +118,15 @@ public class Actions {
                                         logger.infoStat("duplicate", same.get(0), "=", same.subList(1, same.size()));
                                         ioService.retainOne(same);
                                     }
-                                } catch (IOException e) {
+                                } catch (IOException | RuntimeException e) {
                                     logger.error("error", e, paths);
                                 }
                             });
-                } catch (IOException e) {
+                } catch (IOException | RuntimeException e) {
                     logger.error("error", e, "File processing error");
                 }
             });
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "Directory processing error");
         }
 
@@ -127,7 +144,7 @@ public class Actions {
 
         try (Stream<Path> walk = Files.walk(root)) {
             walk
-                    .filter(Files::isRegularFile)
+                    .filter(this::isFile)
                     .peek(marker::mark)
                     .forEach(file -> {
                         try {
@@ -140,11 +157,11 @@ public class Actions {
                                     logger.infoStat("empty blocks", file, ":", bytes, "/", totalSize, "bytes", percentage, "%");
                                 }
                             }
-                        } catch (IOException e) {
+                        } catch (IOException | RuntimeException e) {
                             logger.error("error", e, "File processing error");
                         }
                     });
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "Directory processing error");
         }
 
@@ -160,17 +177,17 @@ public class Actions {
 
         try (Stream<Path> walk = Files.walk(targetRoot)) {
             walk
-                    .filter(Files::isDirectory)
+                    .filter(this::isDirectory)
                     .peek(d -> marker.mark(d))
                     .forEach(directory -> {
                         try {
                             marker.mark(directory);
                             ioService.deleteEmpty(targetRoot, directory);
-                        } catch (IOException e) {
+                        } catch (IOException | RuntimeException e) {
                             logger.error("error", e, "Directory processing error");
                         }
                     });
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "Directory processing error");
         }
 
@@ -185,7 +202,7 @@ public class Actions {
         marker.reset();
 
         try (Stream<Path> walk = Files.walk(sourceRoot)) {
-            walk.filter(Files::isRegularFile).forEach(source -> {
+            walk.filter(this::isFile).forEach(source -> {
                 try {
                     marker.mark(source);
                     logger.stat("total", source);
@@ -205,11 +222,11 @@ public class Actions {
                         // does not exist in target location or target is a different file
                         ioService.copy(source, target);
                     }
-                } catch (IOException e) {
+                } catch (IOException | RuntimeException e) {
                     logger.error("error", e, "File processing error");
                 }
             });
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "Directory processing error");
         }
 
@@ -227,14 +244,14 @@ public class Actions {
             Path target = Paths.get("");
             List<Path> directories;
             try (Stream<Path> walk = Files.walk(path)) {
-                directories = walk.filter(Files::isDirectory).sorted().collect(Collectors.toList());
+                directories = walk.filter(this::isDirectory).sorted().collect(Collectors.toList());
             }
             logger.info("count", "Found", directories.size(), "directories");
             for (Path directory : directories) {
                 List<Path> files;
                 try (Stream<Path> list = Files.list(directory)) {
                     files = list
-                            .filter(Files::isRegularFile)
+                            .filter(this::isFile)
                             .peek(marker::mark)
                             .sorted().collect(Collectors.toList());
                 }
@@ -255,7 +272,7 @@ public class Actions {
                     }
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "File processing error");
         }
 
@@ -273,13 +290,13 @@ public class Actions {
 
         logger.info("target", target);
         try (Stream<Path> walk = Files.walk(target)) {
-            walk.filter(Files::isDirectory).forEach(directory -> {
+            walk.filter(this::isDirectory).forEach(directory -> {
                 try {
                     marker.mark(directory);
                     int[] count = new int[]{0};
                     try (Stream<Path> list = Files.list(directory)) {
                         list
-                                .filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
+                                .filter(this::isFile)
                                 .forEach(path -> {
                                     count[0]++;
                                     marker.mark(path);
@@ -291,18 +308,18 @@ public class Actions {
                                 });
                     }
                     logger.info("directory", directory, ":", count[0], "files");
-                } catch (IOException e) {
+                } catch (IOException | RuntimeException e) {
                     logger.error("error", e, "File processing error");
                 }
             });
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "Directory processing error");
         }
 
         logger.info("source", source);
         Map<Long, List<Path>> sizeToSourcePaths = new TreeMap<>();
         try (Stream<Path> walk = Files.walk(source)) {
-            walk.filter(Files::isRegularFile).forEach(sourceFile -> {
+            walk.filter(this::isFile).forEach(sourceFile -> {
                 try {
                     logger.stat("total", sourceFile);
                     marker.mark(sourceFile);
@@ -312,11 +329,11 @@ public class Actions {
                     } else {
                         logger.infoStat("unique", sourceFile);
                     }
-                } catch (IOException e) {
+                } catch (IOException | RuntimeException e) {
                     logger.error("error", e, "File processing error");
                 }
             });
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "Directory processing error");
         }
 
@@ -332,7 +349,7 @@ public class Actions {
                         for (Path sourceFile : same) {
                             if (sourceSet.contains(sourceFile)) {
                                 logger.infoStat("duplicate", sourceFile, "=", targetFile);
-                                ioService.delete(sourceFile);
+                                ioService.deleteCopy(sourceFile, targetFile);
                                 unique.remove(sourceFile);
                             }
                         }
@@ -341,7 +358,7 @@ public class Actions {
                 for (Path sourceFile : unique) {
                     logger.infoStat("unique", sourceFile);
                 }
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
                 logger.error("error", e, "File processing error");
             }
         });
@@ -359,16 +376,16 @@ public class Actions {
         Map<Long, List<Path>> sizeToPaths = new HashMap<>();
 
         try (Stream<Path> walk = Files.walk(root)) {
-            walk.filter(Files::isRegularFile).forEach(file -> {
+            walk.filter(this::isFile).forEach(file -> {
                 try {
                     marker.mark(file);
                     List<Path> paths = sizeToPaths.computeIfAbsent(Files.size(file), k -> new ArrayList<>());
                     paths.add(file);
-                } catch (IOException e) {
+                } catch (IOException | RuntimeException e) {
                     logger.error("error", e, "File processing error");
                 }
             });
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             logger.error("error", e, "Directory processing error");
         }
 
@@ -388,7 +405,7 @@ public class Actions {
                         for (Path path : different) {
                             logger.infoStat("different", path);
                         }
-                    } catch (IOException e) {
+                    } catch (IOException | RuntimeException e) {
                         logger.error("error", e, "Delete error");
                     }
                 });
