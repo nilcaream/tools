@@ -1,6 +1,7 @@
 package com.nilcaream.cptidy;
 
 import com.nilcaream.atto.Atto;
+import com.nilcaream.utilargs.ArgumentsParser;
 import com.nilcaream.utilargs.Option;
 import com.nilcaream.utilargs.UtilArgs;
 
@@ -9,12 +10,15 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
@@ -81,6 +85,11 @@ public class App {
     public static void main(String[] args) throws IOException {
         Locale.setDefault(Locale.ROOT);
         App app = Atto.builder().build().instance(App.class);
+        List<String> unknown = unknownOptions(args, App.class, IoService.class);
+        if (!unknown.isEmpty()) {
+            app.logger.error("unknown option", unknown.stream().map(o -> o.length() == 1 ? "-" + o : "--" + o).collect(Collectors.joining(" ")));
+            app.fail();
+        }
         UtilArgs.bind(args, app);
         UtilArgs.bind(args, app.ioService);
 
@@ -88,6 +97,24 @@ public class App {
         if (!app.execute()) {
             System.exit(1);
         }
+    }
+
+    // util-args skips options that no field declares, and a destructive run must not take a typo or a removed option as a no-op
+    static List<String> unknownOptions(String[] args, Class<?>... types) {
+        Set<String> known = new HashSet<>();
+        for (Class<?> type : types) {
+            for (Field field : type.getDeclaredFields()) {
+                Option option = field.getAnnotation(Option.class);
+                if (option != null) {
+                    known.add(option.value());
+                    known.add(option.alternative());
+                }
+            }
+        }
+        return new ArgumentsParser().parse(args).keySet().stream()
+                .filter(key -> !key.isEmpty() && !key.equals("--") && !known.contains(key)) // "--" holds the operands after it
+                .sorted()
+                .collect(Collectors.toList());
     }
 
     private void initialize(String[] args) throws IOException {
