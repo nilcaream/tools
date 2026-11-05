@@ -184,7 +184,7 @@ public class NameResolver {
     }
 
     // test.txt -> test
-    private String getName(String nameExtension) {
+    static String getName(String nameExtension) {
         int index = nameExtension.lastIndexOf(".");
         if (index == -1) {
             return nameExtension;

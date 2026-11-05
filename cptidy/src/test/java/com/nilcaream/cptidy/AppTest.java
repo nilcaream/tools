@@ -1,5 +1,6 @@
 package com.nilcaream.cptidy;
 
+import com.nilcaream.utilargs.UtilArgs;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,5 +24,29 @@ class AppTest {
 
         // then
         assertThat(App.unknownOptions(args, App.class, IoService.class)).containsExactly("delte", "fast", "x");
+    }
+
+    @Test
+    void shouldAcceptActionsThatRunTogether() {
+        assertThat(conflict("--organize", "--no-duplicates", "--no-empty")).isNull();
+        assertThat(conflict("--reorganize", "--no-empty")).isNull();
+        assertThat(conflict("--no-duplicates", "--no-empty")).isNull();
+        assertThat(conflict("--synchronize", "--source", "a")).isNull();
+        assertThat(conflict("--analyze")).isNull();
+    }
+
+    @Test
+    void shouldRejectActionsThatWouldRunOnlyInPart() {
+        assertThat(conflict("--analyze", "--organize")).contains("choose one");
+        assertThat(conflict("--reorganize", "--no-duplicates")).contains("--no-duplicates runs alone");
+        assertThat(conflict("--synchronize", "--no-empty")).contains("--no-empty runs alone");
+        assertThat(conflict("--count-zeros", "--no-duplicates")).contains("--no-duplicates runs alone");
+        assertThat(conflict("--synchronize", "--source", "a", "--source", "b")).isEqualTo("--synchronize takes one --source");
+    }
+
+    private static String conflict(String... args) {
+        App app = new App();
+        UtilArgs.bind(args, app);
+        return app.conflictingActions();
     }
 }

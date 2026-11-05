@@ -86,7 +86,7 @@ public class Io {
     public boolean isSameFile(Path source, Path target) throws IOException {
         if (Files.exists(source) && Files.exists(target)) {
             if (!Files.isRegularFile(source) || !Files.isRegularFile(target)) {
-                throw new IllegalArgumentException("Symlinks are not supported " + source + ", " + target);
+                throw new IllegalArgumentException("Only regular files can be compared " + source + ", " + target);
             } else {
                 return source.toRealPath().toString().equals(target.toRealPath().toString()) || Files.isSameFile(source, target);
             }

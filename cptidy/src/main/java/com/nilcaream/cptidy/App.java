@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.lang.System.currentTimeMillis;
@@ -195,85 +196,92 @@ public class App {
         }
     }
 
+    private void forEachSource(Function<Path, Statistics> action) {
+        sourceDirectories.stream().map(this::asPath).forEach(source -> statistics.add(action.apply(source)));
+    }
+
+    // A combination that the dispatch would run only in part is refused, never trimmed without a word.
+    String conflictingActions() {
+        List<String> main = new ArrayList<>();
+        if (analyze) {
+            main.add("--analyze");
+        }
+        if (organize) {
+            main.add("--organize");
+        }
+        if (reorganize) {
+            main.add("--reorganize");
+        }
+        if (synchronize) {
+            main.add("--synchronize");
+        }
+        if (countZeros) {
+            main.add("--count-zeros");
+        }
+        String action = main.isEmpty() ? null : main.get(0);
+        if (main.size() > 1) {
+            return String.join(" ", main) + ": choose one of them";
+        } else if (removeDuplicates && action != null && !action.equals("--organize")) {
+            return action + " --no-duplicates: --no-duplicates runs alone or with --organize";
+        } else if (removeEmpty && action != null && !action.equals("--organize") && !action.equals("--reorganize")) {
+            return action + " --no-empty: --no-empty runs alone or with --organize, --reorganize or --no-duplicates";
+        } else if (synchronize && sourceDirectories.size() > 1) {
+            return "--synchronize takes one --source";
+        } else {
+            return null;
+        }
+    }
+
     private boolean execute() throws IOException {
         long time = currentTimeMillis();
         Logger.ErrorLimitException stopped = null;
         try {
+            String conflict = conflictingActions();
+            if (conflict != null) {
+                logger.error("conflict", conflict);
+                fail();
+            }
+
             if (countZeros) {
                 require(true, false);
-
-                sourceDirectories.stream()
-                        .map(this::asPath)
-                        .forEach(source -> statistics.add(actions.countEmptyBlocks("count-zeros", source, fileCompare.getInternalBufferSize())));
+                forEachSource(source -> actions.countEmptyBlocks("count-zeros", source, fileCompare.getInternalBufferSize()));
             } else if (analyze) {
                 require(true, false);
-
-                sourceDirectories.stream()
-                        .map(this::asPath)
-                        .forEach(source -> statistics.add(actions.analyze("analyze", source)));
+                forEachSource(source -> actions.analyze("analyze", source));
             } else if (organize) {
                 require(true, true);
-
                 if (removeDuplicates) {
-                    sourceDirectories.stream()
-                            .map(this::asPath)
-                            .forEach(source -> statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory))));
+                    forEachSource(source -> actions.findCopies("no-copies", source, asPath(targetDirectory)));
                 }
-
-                sourceDirectories.stream()
-                        .map(this::asPath)
-                        .forEach(source -> statistics.add(actions.organize("organize", source, asPath(targetDirectory))));
-
+                forEachSource(source -> actions.organize("organize", source, asPath(targetDirectory)));
                 if (removeEmpty) {
-                    sourceDirectories.stream()
-                            .map(this::asPath)
-                            .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
+                    forEachSource(source -> actions.removeEmpty("no-empty", source));
                 }
             } else if (removeDuplicates && hasSource() && hasTarget()) {
-                sourceDirectories.stream()
-                        .map(this::asPath)
-                        .forEach(source -> statistics.add(actions.findCopies("no-copies", source, asPath(targetDirectory))));
-
+                forEachSource(source -> actions.findCopies("no-copies", source, asPath(targetDirectory)));
                 if (removeEmpty) {
-                    sourceDirectories.stream()
-                            .map(this::asPath)
-                            .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
+                    forEachSource(source -> actions.removeEmpty("no-empty", source));
                 }
             } else if (removeDuplicates && hasSource()) { // random files in source directory
-                sourceDirectories.stream()
-                        .map(this::asPath)
-                        .forEach(source -> statistics.add(actions.removeDuplicatesGlobally("no-source-copies", source)));
-
+                forEachSource(source -> actions.removeDuplicatesGlobally("no-source-copies", source));
                 if (removeEmpty) {
-                    sourceDirectories.stream()
-                            .map(this::asPath)
-                            .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
+                    forEachSource(source -> actions.removeEmpty("no-empty", source));
                 }
             } else if (removeDuplicates && hasTarget()) { // directory-ordered files in target directory
                 statistics.add(actions.removeDuplicatesPerDirectory("no-target-copies", asPath(targetDirectory)));
-
                 if (removeEmpty) {
                     statistics.add(actions.removeEmpty("no-empty", asPath(targetDirectory)));
                 }
             } else if (reorganize) {
                 require(true, false);
-
-                sourceDirectories.stream()
-                        .map(this::asPath)
-                        .forEach(source -> statistics.add(actions.organize("reorganize", source, source)));
-
+                forEachSource(source -> actions.organize("reorganize", source, source));
                 if (removeEmpty) {
-                    sourceDirectories.stream()
-                            .map(this::asPath)
-                            .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
+                    forEachSource(source -> actions.removeEmpty("no-empty", source));
                 }
             } else if (removeEmpty) {
                 requireAny();
-
                 if (hasSource()) {
-                    sourceDirectories.stream()
-                            .map(this::asPath)
-                            .forEach(source -> statistics.add(actions.removeEmpty("no-empty", source)));
+                    forEachSource(source -> actions.removeEmpty("no-empty", source));
                 }
                 if (hasTarget()) {
                     statistics.add(actions.removeEmpty("no-empty", asPath(targetDirectory)));

@@ -210,6 +210,26 @@ class IoServiceTest {
     }
 
     @Test
+    void shouldStripCopySuffixesOfUpToThreeDigits() throws IOException {
+        // given
+        underTest.setDelete(true);
+        Path original = io.write(root.resolve("x.jpg"), "test");
+        Path copy = io.write(root.resolve("x-10.jpg"), "test");
+        Path year = io.write(root.resolve("trip-2015.jpg"), "test");
+        Path other = io.write(root.resolve("tripx.jpg"), "test");
+
+        // when
+        retainOne(List.of(original, copy));
+        retainOne(List.of(year, other));
+
+        // then
+        assertThat(original).exists();
+        assertThat(copy).doesNotExist();
+        assertThat(year).exists();
+        assertThat(other).doesNotExist();
+    }
+
+    @Test
     void shouldNotDeleteShorterIfLongerIsHasCopySuffix() throws IOException {
         // given
         underTest.setDelete(true);

@@ -59,7 +59,8 @@ public class IoService {
     // 1 - yyyy, 2 - MM, 3 - dd
     private static final Pattern NAME_EXTENSION = Pattern.compile("([12][0-9]{3})([01][0-9])([0123][0-9])-.+");
     private static final Instant DEFAULT_TIMESTAMP = Instant.parse("2000-01-01T12:00:00.00Z");
-    private static final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9])*");
+    // -0 to -999 as buildUniquePath appends them; four digits are left alone, since they are more likely a year
+    private static final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9]{1,3})*");
     private static final long MODIFIED_TIME_TOLERANCE_MILLIS = 2000;
 
     public Path buildMatchingTarget(Path source, Path targetRoot) throws IOException {
@@ -290,8 +291,8 @@ public class IoService {
     private Path selectToDelete(Path fileA, Path fileB) {
         Path result;
 
-        String orgNameA = getName(fileA.getFileName().toString());
-        String orgNameB = getName(fileB.getFileName().toString());
+        String orgNameA = NameResolver.getName(fileA.getFileName().toString());
+        String orgNameB = NameResolver.getName(fileB.getFileName().toString());
         String nameA = removeCopySuffix(orgNameA);
         String nameB = removeCopySuffix(orgNameB);
 
@@ -310,17 +311,6 @@ public class IoService {
         }
 
         return result;
-    }
-
-    // TODO - duplicate from NameResolver. Consider refactoring.
-    // test.txt -> test
-    private String getName(String nameExtension) {
-        int index = nameExtension.lastIndexOf(".");
-        if (index == -1) {
-            return nameExtension;
-        } else {
-            return nameExtension.substring(0, index);
-        }
     }
 
     public void move(Path source, Path orgTarget) throws IOException {
