@@ -215,7 +215,7 @@ public class Actions {
                     } else if (ioService.haveSameContent(source, target)) {
                         // same size, different modification time, same content
                         logger.infoStat("same content", source, "=", target);
-                        ioService.fixTimestamps(source, target);
+                        ioService.copyModifiedTime(source, target);
                     } else {
                         // does not exist in target location or target is a different file
                         ioService.copy(source, target);

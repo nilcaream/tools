@@ -13,8 +13,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributeView;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.List;
@@ -766,81 +764,35 @@ class IoServiceTest {
     }
 
     @Test
-    void shouldSetTimestampFromSourceMatch() throws IOException {
+    void shouldCopyModifiedTimeToTargetOnly() throws IOException {
         // given
-        Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
-        Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
-        FileTime fileTime = FileTime.from(Instant.parse("2010-12-11T10:15:30.00Z"));
-        Files.getFileAttributeView(path1, BasicFileAttributeView.class).setTimes(fileTime, null, fileTime);
+        Path source = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
+        Path target = io.write(root.resolve("tt").resolve("20101211-test.jpg"), "testX");
+        Files.setLastModifiedTime(source, FileTime.from(Instant.parse("2010-12-11T10:15:30.00Z")));
+        Files.setLastModifiedTime(target, FileTime.from(Instant.parse("2020-01-01T00:00:00.00Z")));
         underTest.setTime(true);
 
         // when
-        underTest.fixTimestamps(path1, path2);
+        underTest.copyModifiedTime(source, target);
 
         // then
-        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
-        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
+        assertThat(Files.getLastModifiedTime(source).toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
+        assertThat(Files.getLastModifiedTime(target).toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
     }
 
     @Test
-    void shouldSetTimestampFromTargetMatch() throws IOException {
+    void shouldNotCopyModifiedTimeWithoutTimeOption() throws IOException {
         // given
-        Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
-        Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
-        FileTime fileTime = FileTime.from(Instant.parse("2010-12-11T10:15:30.00Z"));
-        Files.getFileAttributeView(path1, BasicFileAttributeView.class).setTimes(fileTime, null, fileTime);
-        underTest.setTime(true);
+        Path source = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
+        Path target = io.write(root.resolve("tt").resolve("20101211-test.jpg"), "testX");
+        Files.setLastModifiedTime(source, FileTime.from(Instant.parse("2010-12-11T10:15:30.00Z")));
+        Files.setLastModifiedTime(target, FileTime.from(Instant.parse("2020-01-01T00:00:00.00Z")));
 
         // when
-        underTest.fixTimestamps(path2, path1);
+        underTest.copyModifiedTime(source, target);
 
         // then
-        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
-        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T10:15:30.00Z"));
-    }
-
-    @Test
-    void shouldSetTimestampFromFileName() throws IOException {
-        // given
-        Path path1 = io.write(root.resolve("te").resolve("20101211-test.jpg"), "testX");
-        Path path2 = io.write(root.resolve("te").resolve("20010102-wwww.jpg"), "testX");
-        underTest.setTime(true);
-
-        // when
-        underTest.fixTimestamps(path2, path1);
-
-        // then
-        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2010-12-11T12:00:00.00Z"));
-        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2001-01-02T12:00:00.00Z"));
-    }
-
-    @Test
-    void shouldSetDefaultTimestamp() throws IOException {
-        // given
-        Path path1 = io.write(root.resolve("te").resolve("2010xx1211-test.jpg"), "testX");
-        Path path2 = io.write(root.resolve("te").resolve("30010102-wwww.jpg"), "testX");
-        underTest.setTime(true);
-
-        // when
-        underTest.fixTimestamps(path2, path1);
-
-        // then
-        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
-        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
-    }
-
-    @Test
-    void shouldNotSetDefaultTimestamp() throws IOException {
-        // given
-        Path path1 = io.write(root.resolve("te").resolve("2010xx1211-test.jpg"), "testX");
-        Path path2 = io.write(root.resolve("te").resolve("30010102-wwww.jpg"), "testX");
-
-        // when
-        underTest.fixTimestamps(path2, path1);
-
-        // then
-        assertThat(Files.readAttributes(path1, BasicFileAttributes.class).creationTime().toInstant()).isNotEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
-        assertThat(Files.readAttributes(path2, BasicFileAttributes.class).creationTime().toInstant()).isNotEqualTo(Instant.parse("2000-01-01T12:00:00.00Z"));
+        assertThat(Files.getLastModifiedTime(target).toInstant()).isEqualTo(Instant.parse("2020-01-01T00:00:00.00Z"));
     }
 
 

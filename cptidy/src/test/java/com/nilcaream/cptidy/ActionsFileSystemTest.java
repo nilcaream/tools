@@ -451,6 +451,25 @@ class ActionsFileSystemTest {
     }
 
     @Test
+    void shouldSynchronizeTimeToTargetAndNeverChangeSource() throws IOException {
+        // given
+        ioService.setTime(true);
+        // neither modification time matches the date in the name, which once stamped both files with the name date
+        Path sourceFile = write(source.resolve("2020-01").resolve("20200102-same.jpg"), 2048, 4);
+        Path targetFile = write(target.resolve("2020-01").resolve("20200102-same.jpg"), 2048, 4);
+        FileTime sourceTime = FileTime.from(Instant.parse("2015-06-20T10:00:00Z"));
+        Files.setLastModifiedTime(sourceFile, sourceTime);
+        Files.setLastModifiedTime(targetFile, FileTime.from(Instant.parse("2019-03-04T10:00:00Z")));
+
+        // when
+        actions.synchronize("synchronize", source, target);
+
+        // then
+        assertThat(Files.getLastModifiedTime(sourceFile)).isEqualTo(sourceTime);
+        assertThat(Files.getLastModifiedTime(targetFile)).isEqualTo(sourceTime);
+    }
+
+    @Test
     void shouldCountEmptyBlocks() throws IOException {
         // given
         byte[] bytes = bytes(4096, 1);

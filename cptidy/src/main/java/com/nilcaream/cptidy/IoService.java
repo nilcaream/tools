@@ -8,11 +8,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -56,9 +53,6 @@ public class IoService {
     private record FileState(long size, FileTime lastModifiedTime) {
     }
 
-    // 1 - yyyy, 2 - MM, 3 - dd
-    private static final Pattern NAME_EXTENSION = Pattern.compile("([12][0-9]{3})([01][0-9])([0123][0-9])-.+");
-    private static final Instant DEFAULT_TIMESTAMP = Instant.parse("2000-01-01T12:00:00.00Z");
     // -0 to -999 as buildUniquePath appends them; four digits are left alone, since they are more likely a year
     private static final Pattern COPY_SUFFIX = Pattern.compile("(.+?)(-[0-9]{1,3})*");
     private static final long MODIFIED_TIME_TOLERANCE_MILLIS = 2000;
@@ -111,63 +105,15 @@ public class IoService {
         return Files.size(source) == Files.size(target) && Math.abs(timeDifference) <= MODIFIED_TIME_TOLERANCE_MILLIS;
     }
 
-    private FileTime getCorrectTimestamp(Path path) throws IOException {
-        FileTime fileTime = getModifiedTime(path);
-        String name = path.getFileName().toString();
-        String date = fileTime.toString().substring(0, 10).replace("-", ""); // yyyy-MM-ddTHH:mm:ss -> yyyyMMdd
-        return name.contains(date) ? fileTime : null;
-    }
-
-    private Instant getDateFromName(String name) {
-        Matcher matcher = NAME_EXTENSION.matcher(name);
-        Instant result = null;
-        if (matcher.matches()) {
-            try {
-                result = Instant.parse(matcher.group(1) + "-" + matcher.group(2) + "-" + matcher.group(3) + "T12:00:00.00Z");
-            } catch (DateTimeParseException e) {
-                logger.warn("invalid-date", name);
-            }
-        }
-        return result;
-    }
-
-    private void setTimestampFromName(Path path) throws IOException {
-        Instant instant = ofNullable(getDateFromName(path.getFileName().toString())).orElse(DEFAULT_TIMESTAMP);
-        setTimestamp(path, FileTime.from(instant));
-    }
-
-    public void fixTimestamps(Path source, Path target) throws IOException {
-        FileTime sourceFileTime = getCorrectTimestamp(source);
-        FileTime targetFileTime = getCorrectTimestamp(target);
-
-        if (sourceFileTime != null) {
-            setTimestamp(target, sourceFileTime);
-        } else if (targetFileTime != null) {
-            setTimestamp(source, targetFileTime);
-        } else {
-            setTimestampFromName(source);
-            setTimestampFromName(target);
-        }
-    }
-
-    // modification time: on Linux the creation time is the birth time of this copy, and no copy keeps it
-    private FileTime getModifiedTime(Path path) throws IOException {
-        return Files.getLastModifiedTime(path);
-    }
-
-    private void setTimestamp(Path path, FileTime fileTime) throws IOException {
-        String from = asString(getModifiedTime(path));
-        String to = asString(fileTime);
-        if (fileTime.toInstant().equals(DEFAULT_TIMESTAMP)) {
-            logger.infoStat("time-default", path, ":", from, "->", to);
-        } else {
-            logger.infoStat("time-fix", path, ":", from, "->", to);
-        }
+    // As rsync -t does: the target takes the source's modification time. The source is never changed.
+    public void copyModifiedTime(Path source, Path target) throws IOException {
+        FileTime fileTime = Files.getLastModifiedTime(source);
+        logger.infoStat("time-fix", target, ":", asString(Files.getLastModifiedTime(target)), "->", asString(fileTime));
         if (time) {
             try {
-                Files.getFileAttributeView(path, BasicFileAttributeView.class).setTimes(fileTime, null, fileTime);
+                Files.setLastModifiedTime(target, fileTime);
             } catch (IOException ignored) {
-                logger.infoStat("time-no-fix", path, "Could not set file times");
+                logger.infoStat("time-no-fix", target, "Could not set file times");
             }
         }
     }

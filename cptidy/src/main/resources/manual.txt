@@ -122,8 +122,9 @@ synchronize
 -- Requires a single source and target path.
 -- Each file from source is checked if it exists under the same relative path in target.
 --- If it exists with the same size and a modification time within 2 seconds, then it is logged as same attributes and its content is not read.
---- Otherwise, if it has same content, then file timestamps are corrected.
----- Source, target or both files attributes can be modified (if file-system supported).
+--- Otherwise, if it has same content, then the target takes the modification time of the source.
+---- The source is never modified.
+---- Options used: time.
 --- Otherwise source is copied to target.
 
 count-zeros
