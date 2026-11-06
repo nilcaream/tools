@@ -1,3 +1,13 @@
+general
+
+- Nothing is changed unless its option is given: copy, move, delete, time. A run without them is a dry run and ends with a DRY-RUN line.
+- An unknown option, or actions that cannot run together, stop the run with an error before anything is done.
+- Symbolic links are skipped, never followed. Hard links to one file are never treated as duplicates of each other.
+- A duplicate is deleted only while it and the retained file have the same size and modification time as when they were compared.
+- A move to another file system deletes the source only after the copy reads back the same.
+- The run stops after 16 errors, prints its summary and exits with status 1.
+- Dates come from the file name, EXIF, or the file modification time; the creation time is not used.
+
 analyze
 
 - Usage: check if vault (source argument) is properly organized.
@@ -65,7 +75,7 @@ no-duplicates with sources only
 --- Files of the same size are grouped.
 --- Each group is divided into subgroups of same content files: by a SHA-256 of the first 1 MB, then by a SHA-256 of the whole file.
 --- Each file is read at most twice and only while another file may still have the same content.
---- Subgroup with most files is chosen. Only one file from such subgroup is retained. Others are deleted.
+--- In every subgroup only one file is retained. Others are deleted.
 --- Options used: delete
 -- If no-empty option is set, then no-empty procedure is executed on each source.
 --- See implementation details in Organize.
@@ -78,8 +88,8 @@ no-duplicates with target only
 -- No-target-copies procedure is executed on the target.
 --- Each target child directory is scanned individually.
 --- Each regular file of size > 1kB is scanned.
---- Files of the same size are grouped.
---- Each file within the group is compared with another. If they are the same, one of the files is deleted.
+--- Files of the same size are grouped and divided into subgroups of same content files, as in no-duplicates with sources only.
+--- In every subgroup only one file is retained. Others are deleted.
 --- Options used: delete
 -- If no-empty option is set, then no-empty procedure is executed on the target.
 --- See implementation details in Organize.
