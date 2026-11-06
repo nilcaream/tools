@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -63,6 +64,9 @@ public class App {
     @Option(alternative = "buffer")
     private int bufferSize;
 
+    @Option(alternative = "log")
+    private String logDirectory;
+
     @Inject
     private IoService ioService;
 
@@ -85,6 +89,8 @@ public class App {
 
     public static void main(String[] args) throws IOException {
         Locale.setDefault(Locale.ROOT);
+        // read by logback.xml, so it is set before the first logger exists
+        System.setProperty("cptidy.log", Files.createDirectories(logDirectory(args, System.getProperty("user.home"))).toString());
         App app = Atto.builder().build().instance(App.class);
         List<String> unknown = unknownOptions(args, App.class, IoService.class);
         if (!unknown.isEmpty()) {
@@ -98,6 +104,12 @@ public class App {
         if (!app.execute()) {
             System.exit(1);
         }
+    }
+
+    // never the current directory, which may be the vault being tidied
+    static Path logDirectory(String[] args, String home) {
+        List<String> log = new ArgumentsParser().parse(args).get("log");
+        return log == null || log.isEmpty() ? Paths.get(home, ".local", "state", "cptidy") : Paths.get(log.get(0));
     }
 
     // util-args skips options that no field declares, and a destructive run must not take a typo or a removed option as a no-op
@@ -127,6 +139,7 @@ public class App {
         logger.info("Arguments", String.join(" ", args));
         logger.info("Sources", hasSource() ? sourceDirectories.stream().map(this::asPath).map(Path::toString).collect(Collectors.joining(" ")) : "");
         logger.info("Target", hasTarget() ? asPath(targetDirectory) : "");
+        logger.info("Log", System.getProperty("cptidy.log", ""));
         logger.info("Options", opt("verbose", verbose), opt("copy", ioService.isCopy()), opt("move", ioService.isMove()), opt("delete", ioService.isDelete()), opt("time", ioService.isTime()));
         logger.info("Actions", opt("analyze", analyze), opt("organize", organize), opt("reorganize", reorganize), opt("no-duplicates", removeDuplicates), opt("synchronize", synchronize), opt("no-empty", removeEmpty));
 
@@ -177,7 +190,7 @@ public class App {
     private void fail() {
         logger.error("no input", "Provide input arguments: --source sourceDirectory --target targetDirectory");
         logger.error("actions", "--analyze --organize --synchronize --reorganize --no-duplicates --no-empty");
-        logger.error("options", "--copy --move --delete --time");
+        logger.error("options", "--copy --move --delete --time --log logDirectory");
         //noinspection ConstantConditions
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(getClass().getResourceAsStream("/manual.txt")))) {
             logger.label("");

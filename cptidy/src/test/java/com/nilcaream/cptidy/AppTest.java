@@ -3,6 +3,8 @@ package com.nilcaream.cptidy;
 import com.nilcaream.utilargs.UtilArgs;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Paths;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AppTest {
@@ -11,7 +13,7 @@ class AppTest {
     void shouldAcceptEveryDeclaredOption() {
         // given
         String[] args = {"--organize", "--no-duplicates", "--no-empty", "--source", "a", "b", "--target", "c", "--delete", "--move", "--copy", "--time",
-                "--buffer", "1024", "--configuration", "c.json", "-v", "--", "--operand"};
+                "--buffer", "1024", "--configuration", "c.json", "--log", "logs", "-v", "--", "--operand"};
 
         // then
         assertThat(App.unknownOptions(args, App.class, IoService.class)).isEmpty();
@@ -24,6 +26,12 @@ class AppTest {
 
         // then
         assertThat(App.unknownOptions(args, App.class, IoService.class)).containsExactly("delte", "fast", "x");
+    }
+
+    @Test
+    void shouldWriteLogToStateDirectoryUnlessGiven() {
+        assertThat(App.logDirectory(new String[]{"--analyze", "--source", "a"}, "/home/x")).isEqualTo(Paths.get("/home/x/.local/state/cptidy"));
+        assertThat(App.logDirectory(new String[]{"--analyze", "--log", "/var/tmp/logs", "--source", "a"}, "/home/x")).isEqualTo(Paths.get("/var/tmp/logs"));
     }
 
     @Test

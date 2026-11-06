@@ -8,7 +8,7 @@
     </appender>
 
     <appender name="file" class="ch.qos.logback.core.FileAppender">
-        <file>cptidy-${timestamp}.txt</file>
+        <file>${cptidy.log}/cptidy-${timestamp}.txt</file>
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} %.-3level %msg%n</pattern>
         </encoder>

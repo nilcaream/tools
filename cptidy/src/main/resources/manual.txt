@@ -7,6 +7,7 @@ general
 - A move to another file system deletes the source only after the copy reads back the same.
 - The run stops after 16 errors, prints its summary and exits with status 1.
 - Dates come from the file name, EXIF, or the file modification time; the creation time is not used.
+- Each run writes its log to ~/.local/state/cptidy/cptidy-yyyyMMdd-HHmmss.txt (the directory is created if missing); the log option sets another directory.
 
 analyze
 
@@ -137,5 +138,5 @@ count-zeros
 -- Buffer size is set through buffer option.
 -- Can take long time as all files are read.
 -- Useful scripts for cptidy log file:
---- grep "EMPTY-BLOCKS" cptidy-20230226-122539.txt | sort -k 6 -nr | head
---- grep "EMPTY-BLOCKS" cptidy-20230226-122539.txt | sort -k 10 -nr | head
+--- grep "EMPTY-BLOCKS" ~/.local/state/cptidy/cptidy-20230226-122539.txt | sort -k 6 -nr | head
+--- grep "EMPTY-BLOCKS" ~/.local/state/cptidy/cptidy-20230226-122539.txt | sort -k 10 -nr | head
