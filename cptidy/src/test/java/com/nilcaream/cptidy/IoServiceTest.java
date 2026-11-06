@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 
 @ExtendWith(MockitoExtension.class)
 class IoServiceTest {
@@ -185,6 +186,24 @@ class IoServiceTest {
         assertThat(target1).hasContent("test");
         assertThat(file2).exists();
         assertThat(target2).doesNotExist();
+    }
+
+    @Test
+    void shouldRemoveHalfWrittenCopyWhenMoveToOtherFileSystemFails() throws IOException {
+        // given
+        underTest.setMove(true);
+        Path other = Jimfs.newFileSystem(Configuration.unix()).getPath("other").toAbsolutePath();
+        Path file = io.write(root.resolve("file.txt"), "test");
+        Path target = other.resolve("file.txt");
+        given(nameResolver.buildUniquePath(target)).willReturn(target);
+        doThrow(new IOException("disk full")).when(io).flush(target);
+
+        // when
+        assertThatThrownBy(() -> underTest.move(file, target)).hasMessageContaining("disk full");
+
+        // then
+        assertThat(file).hasContent("test");
+        assertThat(target).doesNotExist();
     }
 
     @Test

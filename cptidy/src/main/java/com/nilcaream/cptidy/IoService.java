@@ -6,6 +6,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -279,9 +280,18 @@ public class IoService {
 
         if (move && !io.rename(source, target)) {
             // another file system: the source is deleted only after its copy reads back the same
-            io.copy(source, target);
-            io.flush(target);
-            if (!fileCompare.sameContent(source, target)) {
+            boolean same;
+            try {
+                io.copy(source, target);
+                io.flush(target);
+                same = fileCompare.sameContent(source, target);
+            } catch (FileAlreadyExistsException e) {
+                throw e; // not this copy's file
+            } catch (IOException | RuntimeException e) {
+                io.delete(target); // a half-written copy would later look like a different file
+                throw e;
+            }
+            if (!same) {
                 io.delete(target);
                 throw new IOException("Copy differs from its source, source kept " + source + " > " + target);
             }
